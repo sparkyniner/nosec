@@ -3,356 +3,376 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Rogue AP Simulation — Enhanced</title>
+  <title>Rogue AP — Command Center (Professional)</title>
   <style>
-    :root{--bg:#071028;--panel:#0b1a33;--accent:#3b82f6;--good:#27ae60;--bad:#e74c3c;--muted:#9fb7d9}
-    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Arial;color:#eaf3ff;background:var(--bg)}
-    .wrap{max-width:1100px;margin:18px auto;padding:18px}
-    header{display:flex;align-items:center;gap:16px}
-    h1{margin:0;font-size:20px}
-    p.lead{margin:0;color:var(--muted)}
-    .board{display:grid;grid-template-columns:360px 1fr;gap:14px;margin-top:14px}
-    .panel{background:var(--panel);padding:12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.45)}
-    .controls label{display:block;font-size:13px;color:#cde6ff;margin:8px 0}
+    :root{
+      --bg:#071126; --panel:#0b2130; --accent:#00c6ff; --good:#00d38a; --bad:#ff6b6b; --muted:#9fbfdc;
+      --glass: rgba(255,255,255,0.03);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#020415,#031128);color:#e6f7ff;font-family:Inter,system-ui,Segoe UI,Arial}
+    header{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;background:linear-gradient(90deg,rgba(255,255,255,0.02),transparent)}
+    header h1{margin:0;font-size:18px;font-weight:600;color:var(--accent)}
+    header p{margin:0;color:var(--muted);font-size:13px}
+
+    .layout{display:grid;grid-template-columns:340px 1fr;gap:16px;padding:18px}
+    .panel{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.03)}
+
+    .controls label{display:block;font-size:13px;color:#dff6ff;margin:8px 0}
+    select,input,button{font-family:inherit}
     input[type=range]{width:100%}
-    input[type=number]{width:84px;padding:6px;border-radius:8px;border:none}
-    button{background:var(--accent);color:white;border:none;padding:8px 10px;border-radius:8px;cursor:pointer}
-    .tiny{font-size:12px;color:var(--muted)}
-    canvas{width:100%;height:480px;border-radius:8px;background:linear-gradient(180deg,#02102a,#061235)}
+    input[type=number]{width:100px;padding:6px;border-radius:6px;border:none;background:transparent;color:#e6f7ff}
+
     .row{display:flex;gap:8px;align-items:center}
-    .log{max-height:120px;overflow:auto;padding:8px;background:#051228;border-radius:8px;color:#cfe7ff;font-size:13px}
-    .bigstats{display:flex;gap:8px;align-items:center;margin-top:8px}
-    .stat{background:rgba(255,255,255,0.03);padding:8px;border-radius:8px;min-width:96px;text-align:center}
-    .footer{margin-top:10px;color:var(--muted);font-size:13px}
+    .small{font-size:12px;color:var(--muted)}
+    .btn{background:linear-gradient(90deg,var(--accent),#75e6ff);color:#012; padding:8px 10px;border-radius:8px;border:none;cursor:pointer;font-weight:600}
+    .ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted);padding:8px;border-radius:8px}
+
+    .stats{display:flex;gap:8px;margin-top:12px}
+    .stat{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;min-width:80px;text-align:center}
+
+    /* canvas layout */
+    .visual{position:relative}
+    canvas{width:100%;height:760px;border-radius:10px;display:block;background:linear-gradient(180deg,#011027,#00101a)}
+    .overlay{position:absolute;right:18px;top:18px;background:rgba(2,8,16,0.5);padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);color:var(--muted)}
+
+    .footer{margin-top:12px;color:var(--muted);font-size:13px}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <div>
-        <h1>Rogue Access Point — Enhanced Visual Simulation</h1>
-        <p class="lead">Safe, in-browser simulation. No real network activity. Python logic runs via Pyodide.</p>
+  <header>
+    <div>
+      <h1>Rogue AP — Professional Command Center</h1>
+      <p class="small">Real-time, client-side simulation — adjustable environment and advanced signal model. All safe and offline.</p>
+    </div>
+    <div style="text-align:right">
+      <div class="small">Status: <strong style="color:var(--accent)">Ready</strong></div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="panel" id="controls">
+      <label>Scenario preset
+        <select id="preset">
+          <option value="urban">Urban — dense, high interference</option>
+          <option value="campus">Campus — mixed density</option>
+          <option value="field">Field — sparse</option>
+          <option value="advanced">Advanced — dynamic hotspots</option>
+        </select>
+      </label>
+
+      <label>Clients
+        <input id="numClients" type="number" value="30" min="3" max="200">
+      </label>
+
+      <label>Mobility (0–10)
+        <input id="mobility" type="range" min="0" max="10" value="5">
+      </label>
+
+      <label>Trusted AP Power
+        <input id="trustedPower" type="range" min="20" max="600" value="140">
+      </label>
+
+      <label>Rogue AP Power
+        <input id="roguePower" type="range" min="20" max="800" value="220">
+      </label>
+
+      <label>Jamming Intensity (0–10)
+        <input id="jamming" type="range" min="0" max="10" value="2">
+      </label>
+
+      <label>Noise Floor (dB)
+        <input id="noiseFloor" type="range" min="-10" max="30" value="6">
+      </label>
+
+      <label>Channel Overlap (0–8)
+        <input id="channelOverlap" type="range" min="0" max="8" value="2">
+      </label>
+
+      <label>Encryption Adoption Rate (%)
+        <input id="encRate" type="range" min="0" max="100" value="65">
+      </label>
+
+      <label>Client Vigilance (user caution 0–1)
+        <input id="vigilance" type="range" min="0" max="1" step="0.01" value="0.65">
+      </label>
+
+      <label>Rogue Behavior
+        <select id="rogueBehavior">
+          <option value="static">Static</option>
+          <option value="pulsed">Pulsed Boost</option>
+          <option value="adaptive">Adaptive (moves to weak clusters)</option>
+          <option value="stealth">Stealth (slow rise)</option>
+        </select>
+      </label>
+
+      <div class="row" style="margin-top:10px">
+        <button id="startBtn" class="btn">Start / Reset</button>
+        <button id="autoBtn" class="ghost">Auto</button>
+        <button id="stepBtn" class="ghost">Step</button>
       </div>
-    </header>
 
-    <div class="board">
-      <div class="panel">
-        <div class="controls">
-          <label>Number of clients: <input id="numClients" type="number" value="8" min="1" max="40"></label>
-          <label>Trusted AP strength: <input id="trustedStrength" type="range" min="20" max="140" value="78"></label>
-          <label>Rogue AP strength: <input id="rogueStrength" type="range" min="20" max="160" value="92"></label>
-          <label>Client mobility (0-10): <input id="mobility" type="range" min="0" max="10" value="4"></label>
-
-          <div style="display:flex;gap:8px;margin-top:10px">
-            <button id="startBtn">Start / Reset</button>
-            <button id="stepBtn">Step</button>
-            <button id="autoBtn">Auto Run</button>
-            <button id="pauseBtn">Pause Anim</button>
-          </div>
-
-          <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
-            <label class="tiny">Speed</label>
-            <input id="speed" type="range" min="50" max="1400" value="700">
-          </div>
-
-          <div class="bigstats">
-            <div class="stat">Connected to Trusted: <div id="countTrusted">0</div></div>
-            <div class="stat">Connected to Rogue: <div id="countRogue">0</div></div>
-            <div class="stat">Tick: <div id="tick">0</div></div>
-          </div>
-
-          <div style="margin-top:10px">
-            <div class="tiny">Event log</div>
-            <div id="log" class="log"></div>
-          </div>
-        </div>
+      <div class="stats">
+        <div class="stat">Trusted<br><strong id="statTrusted">0</strong></div>
+        <div class="stat">Rogue<br><strong id="statRogue">0</strong></div>
+        <div class="stat">Tick<br><strong id="statTick">0</strong></div>
       </div>
 
-      <div class="panel" style="padding:6px;display:flex;flex-direction:column">
-        <canvas id="canvas" width="820" height="480"></canvas>
-        <div class="footer">Use sliders to force changes. Toggle Auto Run to watch dynamic behaviour. If nothing appears, open dev console (F12).</div>
-      </div>
+      <div class="footer">Environment updates instantly when you adjust sliders. Use 'Advanced' preset to see adaptive rogue behavior.</div>
+    </div>
+
+    <div class="panel visual">
+      <canvas id="canvas" width="1200" height="760"></canvas>
+      <div class="overlay" id="overlay">Live telemetry</div>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/pyodide/v0.29.0/full/pyodide.js"></script>
   <script>
-    // Improved single-file demo: Python code embedded as a string (no external sim.py fetch)
-    const PY_CODE = `
-import random, math
+// Embedded Python with set_params for live updates and more variables
+const PY_CODE = `
+import math, random
 class RogueAPSimulation:
     def __init__(self):
-        self.width = 820
-        self.height = 480
+        self.width = 1200
+        self.height = 760
         self.tick = 0
-        self.reset(8,78,92, mobility=4)
+        self.alerts = 0
+        # default params
+        self.params = {
+            'mobility':5.0, 'jamming':2.0, 'noise_floor':6.0, 'channel_overlap':2,
+            'enc_rate':0.65, 'vigilance':0.65, 'trusted_power':140.0, 'rogue_power':220.0,
+            'preset':'urban', 'rogue_behavior':'pulsed'
+        }
+        self._init_environment()
 
-    def reset(self, n=8, trusted_strength=78, rogue_strength=92, mobility=4):
-        random.seed(1 + int(trusted_strength) + int(rogue_strength))
-        self.tick = 0
-        self.trusted_ap = {'id':'trusted','x':200,'y':120,'strength':float(trusted_strength)}
-        self.rogue_ap = {'id':'rogue','x':540,'y':140,'strength':float(rogue_strength)}
-        self.mobility = float(mobility)
+    def _init_environment(self):
+        p = self.params
+        random.seed(100 + int(p['trusted_power']) + int(p['rogue_power']))
+        self.tick = 0; self.alerts = 0
+        self.trusted = {'x':300.0,'y':180.0,'power':float(p['trusted_power']),'channel':1}
+        self.rogue = {'x':820.0,'y':220.0,'power':float(p['rogue_power']),'channel':6}
         self.clients = []
+        n = int(self.params.get('n_clients',30))
         for i in range(n):
-            x = random.uniform(60, 760)
-            y = random.uniform(220, 430)
-            self.clients.append({
-                'id':f'C{i+1}', 'x':x, 'y':y,
-                'connected_to': None, 'last_switch': 0
-            })
-        for c in self.clients:
-            self._decide_connection(c, initial=True)
+            if p['preset']=='urban': x=random.uniform(80,1120); y=random.uniform(220,700)
+            elif p['preset']=='campus': x=random.uniform(120,980); y=random.uniform(240,620)
+            elif p['preset']=='field': x=random.uniform(40,1160); y=random.uniform(280,720)
+            else: x=random.uniform(60,1120); y=random.uniform(220,700)
+            enc = 'WPA3' if random.random() < p['enc_rate'] else ('WPA2' if random.random()<0.85 else 'OPEN')
+            trust = max(0.05, min(0.98, random.gauss(0.6,0.18)))
+            c = {'id':i+1,'x':x,'y':y,'vx':random.uniform(-0.8,0.8),'vy':random.uniform(-0.6,0.6),'connected':None,'last_switch':0,'trust':trust,'encryption':enc}
+            self.clients.append(c)
+        for c in self.clients: self._decide_connection(c,initial=True)
 
-    def _dist(self, a, b):
-        return math.hypot(a['x']-b['x'], a['y']-b['y'])
+    def set_params(self, **kwargs):
+        # update parameters live without full reset unless necessary
+        for k,v in kwargs.items():
+            if k=='n_clients':
+                self.params['n_clients'] = int(v); self._init_environment(); return
+            self.params[k] = v
+        # update dependent attributes
+        self.trusted['power'] = float(self.params['trusted_power'])
+        self.rogue['power'] = float(self.params['rogue_power'])
+        self.trusted['channel'] = 1
+        self.rogue['channel'] = 6
 
-    def _signal(self, ap, client):
-        d = self._dist(ap, client)
-        # realistic-ish falloff: strength / (1 + d^1.6)
-        base = ap['strength'] / (1 + (d**1.6)/2800.0)
-        noise = random.uniform(-4,4)
-        return base + noise
+    def _dist(self,a,b): return math.hypot(a['x']-b['x'], a['y']-b['y'])
+
+    def _pathloss(self,ap,client):
+        d = max(1.0, self._dist(ap, client))
+        return ap['power'] / (1.0 + (d**1.8)/4000.0)
+
+    def _rssi(self,ap,client):
+        base = self._pathloss(ap,client)
+        # channel overlap penalty
+        ch_pen = max(0, (self.params['channel_overlap'] - abs(ap['channel'] - self.trusted['channel']))) * 2.0
+        noise = random.uniform(-3,3) + (self.params['noise_floor']*0.1)
+        jam_penalty = self.params['jamming'] * 1.2
+        return base - ch_pen - jam_penalty + noise
+
+    def _decision_score(self, ap, client):
+        rssi = self._rssi(ap, client)
+        enc_bonus = 6.0 if client['encryption']=='WPA3' else (3.0 if client['encryption']=='WPA2' else 0.0)
+        trust_factor = client['trust'] * (1.0 if ap is self.trusted else (1 - self.params['vigilance']))
+        return rssi + enc_bonus + trust_factor
 
     def _decide_connection(self, client, initial=False):
-        st = self._signal(self.trusted_ap, client)
-        sr = self._signal(self.rogue_ap, client)
-        # inertia: prevent flip-flopping immediately
-        if client['connected_to'] is None and initial:
-            client['connected_to'] = 'trusted' if st >= sr else 'rogue'
-            client['last_switch'] = self.tick
-            return
-        # switching threshold depends on how long since last switch
+        st = self._decision_score(self.trusted, client)
+        sr = self._decision_score(self.rogue, client) - (12.0 * (1 - client['trust']))
         since = self.tick - client['last_switch']
-        threshold = 6 - min(5, since/3.0)
+        threshold = 5 - min(3, since/5.0)
+        if initial and client['connected'] is None:
+            client['connected'] = 'trusted' if st >= sr else 'rogue'; client['last_switch']=self.tick; return
         if sr - st > threshold:
-            if client['connected_to'] != 'rogue':
-                client['connected_to'] = 'rogue'
-                client['last_switch'] = self.tick
+            if client['connected'] != 'rogue': client['connected'] = 'rogue'; client['last_switch'] = self.tick; self.alerts +=1
         elif st - sr > threshold:
-            if client['connected_to'] != 'trusted':
-                client['connected_to'] = 'trusted'
-                client['last_switch'] = self.tick
+            if client['connected'] != 'trusted': client['connected']='trusted'; client['last_switch']=self.tick
 
     def step(self):
         self.tick += 1
-        # rogue may occasionally boost (simulate attacker)
-        if random.random() < 0.28:
-            self.rogue_ap['strength'] += random.uniform(-2,9)
-        else:
-            self.rogue_ap['strength'] += random.uniform(-1.2,1.6)
-        self.rogue_ap['strength'] = max(20.0, min(200.0, self.rogue_ap['strength']))
-        # trusted small drift
-        self.trusted_ap['strength'] += random.uniform(-1.0,1.2)
-        self.trusted_ap['strength'] = max(20.0, min(200.0, self.trusted_ap['strength']))
+        # rogue behaviors
+        rb = self.params.get('rogue_behavior','pulsed')
+        if rb=='pulsed':
+            if random.random() < 0.25: self.rogue['power'] += random.uniform(8,28)
+            else: self.rogue['power'] += random.uniform(-2,4)
+        elif rb=='adaptive':
+            # find weak clients and move slightly towards centroid
+            weak = [ (c['x'],c['y']) for c in self.clients if c['connected']=='trusted' and c['trust']<0.6 ]
+            if weak:
+                cx = sum(p[0] for p in weak)/len(weak); cy = sum(p[1] for p in weak)/len(weak)
+                self.rogue['x'] += (cx - self.rogue['x'])*0.06; self.rogue['y'] += (cy - self.rogue['y'])*0.06
+                self.rogue['power'] += random.uniform(-1,5)
+            else:
+                self.rogue['power'] += random.uniform(-1,1)
+        elif rb=='stealth': self.rogue['power'] += random.uniform(0,3)
+        else: self.rogue['power'] += random.uniform(-1,1)
+        # clamp
+        self.rogue['power'] = max(20.0, min(1200.0, self.rogue['power']))
+        self.trusted['power'] = max(20.0, min(1200.0, float(self.params['trusted_power'])))
 
-        # clients move smoothly and re-evaluate
+        # client movement & decisions
         for c in self.clients:
-            if self.mobility > 0:
-                c['x'] += random.uniform(-self.mobility*2, self.mobility*2)
-                c['y'] += random.uniform(-self.mobility*1.6, self.mobility*1.6)
-                c['x'] = max(40, min(self.width-40, c['x']))
-                c['y'] = max(180, min(self.height-20, c['y']))
+            if self.params['mobility']>0:
+                c['vx'] += random.uniform(-0.12,0.12)*(self.params['mobility']/4.0); c['vy'] += random.uniform(-0.08,0.08)*(self.params['mobility']/4.0)
+                speed = math.hypot(c['vx'],c['vy']);
+                if speed>3.5: c['vx'] *= 3.5/speed; c['vy'] *= 3.5/speed
+                c['x'] += c['vx']; c['y'] += c['vy']
+                c['x'] = max(40, min(self.width-40, c['x'])); c['y'] = max(160, min(self.height-40, c['y']))
+            # intermittent noise effect
+            if random.random() < 0.02: c['last_switch'] = max(0, c['last_switch'] - 1)
             self._decide_connection(c)
-
-    def set_params(self, n=None, t=None, r=None, mobility=None):
-        if n is not None or t is not None or r is not None or mobility is not None:
-            # rebuild clients if n changed
-            n0 = len(self.clients)
-            n = n if n is not None else n0
-            t = t if t is not None else self.trusted_ap['strength']
-            r = r if r is not None else self.rogue_ap['strength']
-            mob = mobility if mobility is not None else self.mobility
-            self.reset(int(n), float(t), float(r), float(mob))
 
     def get_state(self):
         return {
-            'trusted_ap': dict(self.trusted_ap),
-            'rogue_ap': dict(self.rogue_ap),
-            'clients': [dict(c) for c in self.clients],
-            'tick': self.tick
+            'tick': self.tick, 'alerts': self.alerts,
+            'trusted': dict(self.trusted), 'rogue': dict(self.rogue),
+            'clients': [dict(c) for c in self.clients], 'params': dict(self.params)
         }
 `;
 
-    // UI refs
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const logEl = document.getElementById('log');
-    const countTrusted = document.getElementById('countTrusted');
-    const countRogue = document.getElementById('countRogue');
-    const tickEl = document.getElementById('tick');
+// --- JS render & UI ---
+const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const statTrusted = document.getElementById('statTrusted'), statRogue = document.getElementById('statRogue'), statTick = document.getElementById('statTick');
+let pyodide=null, sim=null, animId=null, auto=false;
 
-    function log(msg){
-      logEl.innerHTML = `<div style="margin-bottom:6px">${new Date().toLocaleTimeString()} — ${msg}</div>` + logEl.innerHTML;
-      // keep only last 1200 chars
-      if(logEl.innerText.length>2500) logEl.innerHTML = logEl.innerHTML.slice(0,2500);
-    }
+async function init(){
+  pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.29.0/full/'});
+  pyodide.runPython(PY_CODE);
+  pyodide.runPython('sim = RogueAPSimulation()');
+  sim = pyodide.globals.get('sim');
+  // set initial number of clients
+  setParam('n_clients', parseInt(document.getElementById('numClients').value));
+  renderLoop();
+}
 
-    let pyodide = null;
-    let sim = null;
-    let auto = false;
-    let animPaused = false;
-    let lastStepAt = 0;
+function setParam(key, value){
+  // call python set_params
+  try{ pyodide.runPython(`sim.set_params(${key}=${JSON.stringify(value)})`); }catch(e){
+    // fallback, pass as kwarg string
+    pyodide.runPython(`sim.set_params(**{ '${key}': ${JSON.stringify(value)} })`);
+  }
+}
 
-    async function init(){
-      try{
-        log('Loading Pyodide...');
-        pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.29.0/full/'});
-        log('Pyodide ready. Loading simulation code...');
-        pyodide.runPython(PY_CODE);
-        // create instance and expose as _sim
-        pyodide.runPython(`_sim = RogueAPSimulation()`);
-        sim = pyodide.globals.get('_sim');
-        log('Simulation instance created. Hit Start to initialize.');
-      } catch(e){
-        console.error(e); log('Error loading Pyodide: '+e);
-      }
-    }
+function updateAllParams(){
+  const params = {
+    n_clients: parseInt(document.getElementById('numClients').value),
+    mobility: parseFloat(document.getElementById('mobility').value),
+    jamming: parseFloat(document.getElementById('jamming').value),
+    noise_floor: parseFloat(document.getElementById('noiseFloor').value),
+    channel_overlap: parseFloat(document.getElementById('channelOverlap').value),
+    enc_rate: parseFloat(document.getElementById('encRate').value)/100.0,
+    vigilance: parseFloat(document.getElementById('vigilance').value),
+    trusted_power: parseFloat(document.getElementById('trustedPower').value),
+    rogue_power: parseFloat(document.getElementById('roguePower').value),
+    preset: document.getElementById('preset').value.toLowerCase(),
+    rogue_behavior: document.getElementById('rogueBehavior').value
+  };
+  // call python set_params once with dict expansion
+  const kw = Object.entries(params).map(([k,v])=>`${k}=${JSON.stringify(v)}`).join(',');
+  pyodide.runPython(`sim.set_params(${kw})`);
+}
 
-    function resizeCanvasToDisplay(){
-      // keep internal resolution consistent with CSS size
-      const rect = canvas.getBoundingClientRect();
-      canvas.width = Math.floor(rect.width);
-      canvas.height = Math.floor(rect.height);
-    }
+function resize(){ const r=canvas.getBoundingClientRect(); canvas.width = Math.floor(r.width); canvas.height = Math.floor(r.height); }
+window.addEventListener('resize', resize);
 
-    function drawState(state){
-      resizeCanvasToDisplay();
-      ctx.clearRect(0,0,canvas.width,canvas.height);
+function drawGrid(){
+  const w=canvas.width,h=canvas.height; ctx.clearRect(0,0,w,h);
+  ctx.globalAlpha=0.06; ctx.strokeStyle='rgba(255,255,255,0.03)';
+  for(let x=0;x<w;x+=48){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
+  for(let y=0;y<h;y+=48){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+  ctx.globalAlpha=1.0;
+}
 
-      const trusted = state.trusted_ap;
-      const rogue = state.rogue_ap;
-      // background subtle grid
-      drawGrid();
+let sweep = 0;
+function drawRadar(cx,cy,r){
+  const a = sweep; const span = 0.8; const grad = ctx.createRadialGradient(cx,cy,0,cx,cy,r);
+  grad.addColorStop(0, 'rgba(0,198,255,0.14)'); grad.addColorStop(1,'rgba(0,198,255,0)');
+  ctx.fillStyle = grad; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,a,a+span); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle='rgba(0,198,255,0.5)'; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*r, cy+Math.sin(a)*r); ctx.stroke();
+  sweep += 0.02;
+}
 
-      // draw AP heat using radial gradient
-      drawAP(trusted, '#27ae60');
-      drawAP(rogue, '#e74c3c');
+function color(hex, a){ const m={'accent':[0,198,255],'good':[0,211,138],'bad':[255,107,107]}; const c=m[hex]||[200,200,200]; return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
 
-      // clients
-      for(const c of state.clients){
-        drawClient(c, state);
-      }
-    }
+function drawAP(ap, col){ const sx=canvas.width/1200, sy=canvas.height/760; const x=ap.x*sx, y=ap.y*sy; const radius = Math.min(900, ap.power*1.2)*(canvas.width/1200); const g=ctx.createRadialGradient(x,y,0,x,y,radius); g.addColorStop(0, color('accent',0.35)); g.addColorStop(0.6, color('accent',0.08)); g.addColorStop(1, 'rgba(2,8,16,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,radius,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fillStyle=color('good',1); ctx.fill(); ctx.fillStyle='#e6fbff'; ctx.font='12px Arial'; ctx.fillText((ap==sim_trusted?'Trusted':'Rogue') + ` s=${Math.round(ap.power)}`, x+12, y+4); }
 
-    function drawGrid(){
-      const w = canvas.width, h = canvas.height;
-      ctx.save();
-      ctx.globalAlpha = 0.06;
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1;
-      for(let x=0;x<w;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
-      for(let y=0;y<h;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
-      ctx.restore();
-    }
+function drawClient(c, state){ const sx=canvas.width/1200, sy=canvas.height/760; const x=c.x*sx, y=c.y*sy; ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2); ctx.fillStyle = c.connected==='rogue' ? color('bad',0.95) : color('good',0.95); ctx.fill(); ctx.fillStyle='#e6fbff'; ctx.font='11px Arial'; ctx.fillText('C'+c.id, x+10, y+4); // mini bars
+ const st = calcSignal(state.trusted, c); const sr = calcSignal(state.rogue, c); drawMini(x-16,y-18,st,sr);
+ // connection line
+ const ap = c.connected==='rogue' ? state.rogue : state.trusted; if(ap){ ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(ap.x*sx, ap.y*sy); ctx.strokeStyle = c.connected==='rogue'? color('bad',0.4) : color('good',0.35); ctx.lineWidth=1.2; ctx.stroke(); }
+}
 
-    function drawAP(ap, color){
-      const x = ap.x * (canvas.width/820);
-      const y = ap.y * (canvas.height/480);
-      const strength = ap.strength;
-      const radius = Math.min(260, strength*1.9);
-      // outer gradient
-      const grad = ctx.createRadialGradient(x,y,0,x,y,radius*(canvas.width/820));
-      grad.addColorStop(0, colorToRgba(color,0.35));
-      grad.addColorStop(0.5, colorToRgba(color,0.12));
-      grad.addColorStop(1, colorToRgba(color,0.02));
-      ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(x,y,radius*(canvas.width/820),0,Math.PI*2); ctx.fill();
-      // core
-      ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fillStyle = color; ctx.fill();
-      // label
-      ctx.fillStyle = '#d5eefc'; ctx.font = '12px Arial'; ctx.fillText((ap.id==='trusted'?'Trusted':'Rogue')+` (s=${Math.round(ap.strength)})`, x+14, y+4);
-    }
+function calcSignal(ap, client){ const d = Math.hypot(ap.x-client.x, ap.y-client.y)+1; return ap.power / (1 + (d**1.8)/4000.0); }
+function drawMini(x,y,st,sr){ const maxw=44; const total=Math.max(st,sr,6); const w1=Math.min(maxw,(st/total)*maxw); const w2=Math.min(maxw,(sr/total)*maxw); ctx.fillStyle=color('good',0.9); ctx.fillRect(x,y,w1,4); ctx.fillStyle=color('bad',0.9); ctx.fillRect(x,y+6,w2,4); ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.strokeRect(x,y,maxw,10); }
 
-    function drawClient(c, state){
-      const scaleX = canvas.width/820, scaleY = canvas.height/480;
-      const x = c.x*scaleX, y = c.y*scaleY;
-      const col = c.connected_to === 'rogue' ? '#ffb3b3' : (c.connected_to === 'trusted' ? '#b3ffb9' : '#dbe9ff');
-      ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fillStyle = col; ctx.fill();
-      // name
-      ctx.fillStyle = '#dff1ff'; ctx.font='12px Arial'; ctx.fillText(c.id, x+12, y+4);
-      // draw line to AP
-      const ap = c.connected_to === 'rogue' ? state.rogue_ap : state.trusted_ap;
-      if(ap){
-        const ax = ap.x*scaleX, ay = ap.y*scaleY;
-        ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(ax,ay);
-        ctx.strokeStyle = colorToRgba(c.connected_to==='rogue'? '#ff7b7b':'#7be07b',0.45);
-        ctx.lineWidth = 2; ctx.stroke();
-      }
-      // small strength bars above client to visualize relative signals
-      const st = calculateSignal(state.trusted_ap, c);
-      const sr = calculateSignal(state.rogue_ap, c);
-      drawMiniBar(x-10, y-18, st, sr);
-    }
+let sim_state_cache=null; let sim_trusted=null;
+async function renderLoop(){ resize(); if(!pyodide) return; try{ const st_py = pyodide.runPython('sim.get_state()'); const st = st_py.toJs(); sim_state_cache = st; sim_trusted = st.trusted; // dynamic environment changes: brighten background based on jamming
+ const jam = st.params.jamming; document.body.style.background = `linear-gradient(180deg, rgba(${20+jam*15},${25-jam*2},${40+jam*5},1), #011024)`; // draw
+ drawGrid(); // draw AP heatmap
+ drawRadar((st.trusted.x+st.rogue.x)/2*(canvas.width/1200),(st.trusted.y+st.rogue.y)/2*(canvas.height/760), Math.min(canvas.width,canvas.height)/2.4);
+ // draw APs
+ drawAP(st.trusted,'accent'); drawAP(st.rogue,'bad'); // clients
+ st.clients.forEach(c=>drawClient(c,st)); // HUD
+ statTrusted.innerText = st.clients.filter(c=>c.connected==='trusted').length; statRogue.innerText = st.clients.filter(c=>c.connected==='rogue').length; statTick.innerText = st.tick; overlay.innerText = `Jamming: ${st.params.jamming} • Noise: ${st.params.noise_floor}dB • EncRate: ${Math.round(st.params.enc_rate*100)}%`;
+ }catch(e){ console.error(e); }
+ if(auto){ try{ pyodide.runPython('sim.step()'); }catch(e){console.error(e);} }
+ animId = requestAnimationFrame(renderLoop); }
 
-    function calculateSignal(ap, client){
-      const d = Math.hypot(ap.x-client.x, ap.y-client.y);
-      const val = ap.strength / (1 + (d**1.6)/2800.0);
-      return val;
-    }
+// UI wiring
+function applyAll(){ updateAllParams(); }
+function updateAllParams(){ const map = {
+   n_clients: parseInt(document.getElementById('numClients').value),
+   mobility: parseFloat(document.getElementById('mobility').value),
+   jamming: parseFloat(document.getElementById('jamming').value),
+   noise_floor: parseFloat(document.getElementById('noiseFloor').value),
+   channel_overlap: parseFloat(document.getElementById('channelOverlap').value),
+   enc_rate: parseFloat(document.getElementById('encRate').value)/100.0,
+   vigilance: parseFloat(document.getElementById('vigilance').value),
+   trusted_power: parseFloat(document.getElementById('trustedPower').value),
+   rogue_power: parseFloat(document.getElementById('roguePower').value),
+   preset: document.getElementById('preset').value.toLowerCase(),
+   rogue_behavior: document.getElementById('rogueBehavior').value
+ };
+ const kw = Object.entries(map).map(([k,v])=>`${k}=${JSON.stringify(v)}`).join(','); pyodide.runPython(`sim.set_params(${kw})`);
+}
 
-    function drawMiniBar(x,y,st,sr){
-      const maxw = 48; const total = Math.max(st,sr,6);
-      const w1 = Math.min(maxw, (st/total)*maxw);
-      const w2 = Math.min(maxw, (sr/total)*maxw);
-      // trusted bar (green)
-      ctx.fillStyle = '#3ddc84'; ctx.fillRect(x,y, w1, 4);
-      // rogue bar (red) overlay below
-      ctx.fillStyle = '#ff8b8b'; ctx.fillRect(x, y+6, w2, 4);
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.strokeRect(x,y, maxw, 10);
-    }
+// attach live listeners
+['numClients','mobility','jamming','noiseFloor','channelOverlap','encRate','vigilance','trustedPower','roguePower','preset','rogueBehavior'].forEach(id=>{
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.addEventListener('input', ()=>{ try{ updateAllParams(); }catch(e){} });
+});
 
-    function colorToRgba(hex, a){
-      const map = {'#27ae60':[39,174,96],'#e74c3c':[231,76,60],'#ff7b7b':[255,123,123],'#7be07b':[123,224,123],'#3b82f6':[59,130,246]};
-      const rgb = map[hex] || [200,200,200];
-      return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`;
-    }
+// buttons
+document.getElementById('startBtn').addEventListener('click', ()=>{ updateAllParams(); pyodide.runPython('sim._init_environment()'); });
+document.getElementById('stepBtn').addEventListener('click', ()=>{ pyodide.runPython('sim.step()'); });
+document.getElementById('autoBtn').addEventListener('click', ()=>{ auto=!auto; document.getElementById('autoBtn').innerText = auto? 'Stop' : 'Auto'; if(auto) pyodide.runPython('sim.step()'); });
 
-    // UI wiring
-    document.getElementById('startBtn').addEventListener('click', async ()=>{
-      const n = parseInt(document.getElementById('numClients').value);
-      const t = parseFloat(document.getElementById('trustedStrength').value);
-      const r = parseFloat(document.getElementById('rogueStrength').value);
-      const m = parseFloat(document.getElementById('mobility').value);
-      if(!sim){ log('Simulator not ready yet.'); return; }
-      pyodide.runPython(`_sim.set_params(n=${n}, t=${t}, r=${r}, mobility=${m})`);
-      sim = pyodide.globals.get('_sim');
-      renderOnce();
-      log(`Reset: clients=${n}, trusted=${t}, rogue=${r}, mobility=${m}`);
-    });
-
-    document.getElementById('stepBtn').addEventListener('click', ()=>{ if(sim){ pyodide.runPython('_sim.step()'); renderOnce(); } });
-    document.getElementById('autoBtn').addEventListener('click', ()=>{ auto = !auto; document.getElementById('autoBtn').innerText = auto? 'Stop Auto':'Auto Run'; if(auto) runAuto(); });
-    document.getElementById('pauseBtn').addEventListener('click', ()=>{ animPaused = !animPaused; document.getElementById('pauseBtn').innerText = animPaused? 'Resume Anim':'Pause Anim'; });
-
-    async function runAuto(){
-      const speed = () => parseInt(document.getElementById('speed').value);
-      while(auto){
-        const t0 = performance.now();
-        if(sim){ pyodide.runPython('_sim.step()'); renderOnce(); }
-        const dt = performance.now() - t0; const delay = Math.max(60, speed() - dt);
-        await new Promise(r=>setTimeout(r, delay));
-      }
-    }
-
-    function renderOnce(){
-      try{
-        const statePy = pyodide.runPython('_sim.get_state()');
-        const state = statePy.toJs ? statePy.toJs() : statePy;
-        drawState(state);
-        const ct = state.clients.filter(c=>c.connected_to==='trusted').length;
-        const cr = state.clients.filter(c=>c.connected_to==='rogue').length;
-        countTrusted.innerText = ct; countRogue.innerText = cr; tickEl.innerText = state.tick;
-      }catch(e){ console.error(e); log('Render error: '+e); }
-    }
-
-    // smooth animation of canvas (client jitter)
-    function animate(){
-      if(!animPaused) renderOnce();
-      requestAnimationFrame(animate);
-    }
-
-    // init
-    (async ()=>{ await init(); requestAnimationFrame(animate); })();
+// init
+window.addEventListener('resize', resize); (async ()=>{ await init(); // small delay then apply params
+ setTimeout(()=>{ updateAllParams(); pyodide.runPython('sim.step()'); }, 300); })();
   </script>
 </body>
 </html>
