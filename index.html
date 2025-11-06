@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rogue AP Simulation — Enhanced</title>
+  <style>
+    :root{--bg:#071028;--panel:#0b1a33;--accent:#3b82f6;--good:#27ae60;--bad:#e74c3c;--muted:#9fb7d9}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Arial;color:#eaf3ff;background:var(--bg)}
+    .wrap{max-width:1100px;margin:18px auto;padding:18px}
+    header{display:flex;align-items:center;gap:16px}
+    h1{margin:0;font-size:20px}
+    p.lead{margin:0;color:var(--muted)}
+    .board{display:grid;grid-template-columns:360px 1fr;gap:14px;margin-top:14px}
+    .panel{background:var(--panel);padding:12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.45)}
+    .controls label{display:block;font-size:13px;color:#cde6ff;margin:8px 0}
+    input[type=range]{width:100%}
+    input[type=number]{width:84px;padding:6px;border-radius:8px;border:none}
+    button{background:var(--accent);color:white;border:none;padding:8px 10px;border-radius:8px;cursor:pointer}
+    .tiny{font-size:12px;color:var(--muted)}
+    canvas{width:100%;height:480px;border-radius:8px;background:linear-gradient(180deg,#02102a,#061235)}
+    .row{display:flex;gap:8px;align-items:center}
+    .log{max-height:120px;overflow:auto;padding:8px;background:#051228;border-radius:8px;color:#cfe7ff;font-size:13px}
+    .bigstats{display:flex;gap:8px;align-items:center;margin-top:8px}
+    .stat{background:rgba(255,255,255,0.03);padding:8px;border-radius:8px;min-width:96px;text-align:center}
+    .footer{margin-top:10px;color:var(--muted);font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Rogue Access Point — Enhanced Visual Simulation</h1>
+        <p class="lead">Safe, in-browser simulation. No real network activity. Python logic runs via Pyodide.</p>
+      </div>
+    </header>
+
+    <div class="board">
+      <div class="panel">
+        <div class="controls">
+          <label>Number of clients: <input id="numClients" type="number" value="8" min="1" max="40"></label>
+          <label>Trusted AP strength: <input id="trustedStrength" type="range" min="20" max="140" value="78"></label>
+          <label>Rogue AP strength: <input id="rogueStrength" type="range" min="20" max="160" value="92"></label>
+          <label>Client mobility (0-10): <input id="mobility" type="range" min="0" max="10" value="4"></label>
+
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button id="startBtn">Start / Reset</button>
+            <button id="stepBtn">Step</button>
+            <button id="autoBtn">Auto Run</button>
+            <button id="pauseBtn">Pause Anim</button>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+            <label class="tiny">Speed</label>
+            <input id="speed" type="range" min="50" max="1400" value="700">
+          </div>
+
+          <div class="bigstats">
+            <div class="stat">Connected to Trusted: <div id="countTrusted">0</div></div>
+            <div class="stat">Connected to Rogue: <div id="countRogue">0</div></div>
+            <div class="stat">Tick: <div id="tick">0</div></div>
+          </div>
+
+          <div style="margin-top:10px">
+            <div class="tiny">Event log</div>
+            <div id="log" class="log"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="padding:6px;display:flex;flex-direction:column">
+        <canvas id="canvas" width="820" height="480"></canvas>
+        <div class="footer">Use sliders to force changes. Toggle Auto Run to watch dynamic behaviour. If nothing appears, open dev console (F12).</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.29.0/full/pyodide.js"></script>
+  <script>
+    // Improved single-file demo: Python code embedded as a string (no external sim.py fetch)
+    const PY_CODE = `
+import random, math
+class RogueAPSimulation:
+    def __init__(self):
+        self.width = 820
+        self.height = 480
+        self.tick = 0
+        self.reset(8,78,92, mobility=4)
+
+    def reset(self, n=8, trusted_strength=78, rogue_strength=92, mobility=4):
+        random.seed(1 + int(trusted_strength) + int(rogue_strength))
+        self.tick = 0
+        self.trusted_ap = {'id':'trusted','x':200,'y':120,'strength':float(trusted_strength)}
+        self.rogue_ap = {'id':'rogue','x':540,'y':140,'strength':float(rogue_strength)}
+        self.mobility = float(mobility)
+        self.clients = []
+        for i in range(n):
+            x = random.uniform(60, 760)
+            y = random.uniform(220, 430)
+            self.clients.append({
+                'id':f'C{i+1}', 'x':x, 'y':y,
+                'connected_to': None, 'last_switch': 0
+            })
+        for c in self.clients:
+            self._decide_connection(c, initial=True)
+
+    def _dist(self, a, b):
+        return math.hypot(a['x']-b['x'], a['y']-b['y'])
+
+    def _signal(self, ap, client):
+        d = self._dist(ap, client)
+        # realistic-ish falloff: strength / (1 + d^1.6)
+        base = ap['strength'] / (1 + (d**1.6)/2800.0)
+        noise = random.uniform(-4,4)
+        return base + noise
+
+    def _decide_connection(self, client, initial=False):
+        st = self._signal(self.trusted_ap, client)
+        sr = self._signal(self.rogue_ap, client)
+        # inertia: prevent flip-flopping immediately
+        if client['connected_to'] is None and initial:
+            client['connected_to'] = 'trusted' if st >= sr else 'rogue'
+            client['last_switch'] = self.tick
+            return
+        # switching threshold depends on how long since last switch
+        since = self.tick - client['last_switch']
+        threshold = 6 - min(5, since/3.0)
+        if sr - st > threshold:
+            if client['connected_to'] != 'rogue':
+                client['connected_to'] = 'rogue'
+                client['last_switch'] = self.tick
+        elif st - sr > threshold:
+            if client['connected_to'] != 'trusted':
+                client['connected_to'] = 'trusted'
+                client['last_switch'] = self.tick
+
+    def step(self):
+        self.tick += 1
+        # rogue may occasionally boost (simulate attacker)
+        if random.random() < 0.28:
+            self.rogue_ap['strength'] += random.uniform(-2,9)
+        else:
+            self.rogue_ap['strength'] += random.uniform(-1.2,1.6)
+        self.rogue_ap['strength'] = max(20.0, min(200.0, self.rogue_ap['strength']))
+        # trusted small drift
+        self.trusted_ap['strength'] += random.uniform(-1.0,1.2)
+        self.trusted_ap['strength'] = max(20.0, min(200.0, self.trusted_ap['strength']))
+
+        # clients move smoothly and re-evaluate
+        for c in self.clients:
+            if self.mobility > 0:
+                c['x'] += random.uniform(-self.mobility*2, self.mobility*2)
+                c['y'] += random.uniform(-self.mobility*1.6, self.mobility*1.6)
+                c['x'] = max(40, min(self.width-40, c['x']))
+                c['y'] = max(180, min(self.height-20, c['y']))
+            self._decide_connection(c)
+
+    def set_params(self, n=None, t=None, r=None, mobility=None):
+        if n is not None or t is not None or r is not None or mobility is not None:
+            # rebuild clients if n changed
+            n0 = len(self.clients)
+            n = n if n is not None else n0
+            t = t if t is not None else self.trusted_ap['strength']
+            r = r if r is not None else self.rogue_ap['strength']
+            mob = mobility if mobility is not None else self.mobility
+            self.reset(int(n), float(t), float(r), float(mob))
+
+    def get_state(self):
+        return {
+            'trusted_ap': dict(self.trusted_ap),
+            'rogue_ap': dict(self.rogue_ap),
+            'clients': [dict(c) for c in self.clients],
+            'tick': self.tick
+        }
+`;
+
+    // UI refs
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const logEl = document.getElementById('log');
+    const countTrusted = document.getElementById('countTrusted');
+    const countRogue = document.getElementById('countRogue');
+    const tickEl = document.getElementById('tick');
+
+    function log(msg){
+      logEl.innerHTML = `<div style="margin-bottom:6px">${new Date().toLocaleTimeString()} — ${msg}</div>` + logEl.innerHTML;
+      // keep only last 1200 chars
+      if(logEl.innerText.length>2500) logEl.innerHTML = logEl.innerHTML.slice(0,2500);
+    }
+
+    let pyodide = null;
+    let sim = null;
+    let auto = false;
+    let animPaused = false;
+    let lastStepAt = 0;
+
+    async function init(){
+      try{
+        log('Loading Pyodide...');
+        pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.29.0/full/'});
+        log('Pyodide ready. Loading simulation code...');
+        pyodide.runPython(PY_CODE);
+        // create instance and expose as _sim
+        pyodide.runPython(`_sim = RogueAPSimulation()`);
+        sim = pyodide.globals.get('_sim');
+        log('Simulation instance created. Hit Start to initialize.');
+      } catch(e){
+        console.error(e); log('Error loading Pyodide: '+e);
+      }
+    }
+
+    function resizeCanvasToDisplay(){
+      // keep internal resolution consistent with CSS size
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.floor(rect.width);
+      canvas.height = Math.floor(rect.height);
+    }
+
+    function drawState(state){
+      resizeCanvasToDisplay();
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      const trusted = state.trusted_ap;
+      const rogue = state.rogue_ap;
+      // background subtle grid
+      drawGrid();
+
+      // draw AP heat using radial gradient
+      drawAP(trusted, '#27ae60');
+      drawAP(rogue, '#e74c3c');
+
+      // clients
+      for(const c of state.clients){
+        drawClient(c, state);
+      }
+    }
+
+    function drawGrid(){
+      const w = canvas.width, h = canvas.height;
+      ctx.save();
+      ctx.globalAlpha = 0.06;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      for(let x=0;x<w;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
+      for(let y=0;y<h;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+      ctx.restore();
+    }
+
+    function drawAP(ap, color){
+      const x = ap.x * (canvas.width/820);
+      const y = ap.y * (canvas.height/480);
+      const strength = ap.strength;
+      const radius = Math.min(260, strength*1.9);
+      // outer gradient
+      const grad = ctx.createRadialGradient(x,y,0,x,y,radius*(canvas.width/820));
+      grad.addColorStop(0, colorToRgba(color,0.35));
+      grad.addColorStop(0.5, colorToRgba(color,0.12));
+      grad.addColorStop(1, colorToRgba(color,0.02));
+      ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(x,y,radius*(canvas.width/820),0,Math.PI*2); ctx.fill();
+      // core
+      ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fillStyle = color; ctx.fill();
+      // label
+      ctx.fillStyle = '#d5eefc'; ctx.font = '12px Arial'; ctx.fillText((ap.id==='trusted'?'Trusted':'Rogue')+` (s=${Math.round(ap.strength)})`, x+14, y+4);
+    }
+
+    function drawClient(c, state){
+      const scaleX = canvas.width/820, scaleY = canvas.height/480;
+      const x = c.x*scaleX, y = c.y*scaleY;
+      const col = c.connected_to === 'rogue' ? '#ffb3b3' : (c.connected_to === 'trusted' ? '#b3ffb9' : '#dbe9ff');
+      ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fillStyle = col; ctx.fill();
+      // name
+      ctx.fillStyle = '#dff1ff'; ctx.font='12px Arial'; ctx.fillText(c.id, x+12, y+4);
+      // draw line to AP
+      const ap = c.connected_to === 'rogue' ? state.rogue_ap : state.trusted_ap;
+      if(ap){
+        const ax = ap.x*scaleX, ay = ap.y*scaleY;
+        ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(ax,ay);
+        ctx.strokeStyle = colorToRgba(c.connected_to==='rogue'? '#ff7b7b':'#7be07b',0.45);
+        ctx.lineWidth = 2; ctx.stroke();
+      }
+      // small strength bars above client to visualize relative signals
+      const st = calculateSignal(state.trusted_ap, c);
+      const sr = calculateSignal(state.rogue_ap, c);
+      drawMiniBar(x-10, y-18, st, sr);
+    }
+
+    function calculateSignal(ap, client){
+      const d = Math.hypot(ap.x-client.x, ap.y-client.y);
+      const val = ap.strength / (1 + (d**1.6)/2800.0);
+      return val;
+    }
+
+    function drawMiniBar(x,y,st,sr){
+      const maxw = 48; const total = Math.max(st,sr,6);
+      const w1 = Math.min(maxw, (st/total)*maxw);
+      const w2 = Math.min(maxw, (sr/total)*maxw);
+      // trusted bar (green)
+      ctx.fillStyle = '#3ddc84'; ctx.fillRect(x,y, w1, 4);
+      // rogue bar (red) overlay below
+      ctx.fillStyle = '#ff8b8b'; ctx.fillRect(x, y+6, w2, 4);
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.strokeRect(x,y, maxw, 10);
+    }
+
+    function colorToRgba(hex, a){
+      const map = {'#27ae60':[39,174,96],'#e74c3c':[231,76,60],'#ff7b7b':[255,123,123],'#7be07b':[123,224,123],'#3b82f6':[59,130,246]};
+      const rgb = map[hex] || [200,200,200];
+      return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`;
+    }
+
+    // UI wiring
+    document.getElementById('startBtn').addEventListener('click', async ()=>{
+      const n = parseInt(document.getElementById('numClients').value);
+      const t = parseFloat(document.getElementById('trustedStrength').value);
+      const r = parseFloat(document.getElementById('rogueStrength').value);
+      const m = parseFloat(document.getElementById('mobility').value);
+      if(!sim){ log('Simulator not ready yet.'); return; }
+      pyodide.runPython(`_sim.set_params(n=${n}, t=${t}, r=${r}, mobility=${m})`);
+      sim = pyodide.globals.get('_sim');
+      renderOnce();
+      log(`Reset: clients=${n}, trusted=${t}, rogue=${r}, mobility=${m}`);
+    });
+
+    document.getElementById('stepBtn').addEventListener('click', ()=>{ if(sim){ pyodide.runPython('_sim.step()'); renderOnce(); } });
+    document.getElementById('autoBtn').addEventListener('click', ()=>{ auto = !auto; document.getElementById('autoBtn').innerText = auto? 'Stop Auto':'Auto Run'; if(auto) runAuto(); });
+    document.getElementById('pauseBtn').addEventListener('click', ()=>{ animPaused = !animPaused; document.getElementById('pauseBtn').innerText = animPaused? 'Resume Anim':'Pause Anim'; });
+
+    async function runAuto(){
+      const speed = () => parseInt(document.getElementById('speed').value);
+      while(auto){
+        const t0 = performance.now();
+        if(sim){ pyodide.runPython('_sim.step()'); renderOnce(); }
+        const dt = performance.now() - t0; const delay = Math.max(60, speed() - dt);
+        await new Promise(r=>setTimeout(r, delay));
+      }
+    }
+
+    function renderOnce(){
+      try{
+        const statePy = pyodide.runPython('_sim.get_state()');
+        const state = statePy.toJs ? statePy.toJs() : statePy;
+        drawState(state);
+        const ct = state.clients.filter(c=>c.connected_to==='trusted').length;
+        const cr = state.clients.filter(c=>c.connected_to==='rogue').length;
+        countTrusted.innerText = ct; countRogue.innerText = cr; tickEl.innerText = state.tick;
+      }catch(e){ console.error(e); log('Render error: '+e); }
+    }
+
+    // smooth animation of canvas (client jitter)
+    function animate(){
+      if(!animPaused) renderOnce();
+      requestAnimationFrame(animate);
+    }
+
+    // init
+    (async ()=>{ await init(); requestAnimationFrame(animate); })();
+  </script>
+</body>
+</html>
