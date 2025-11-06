@@ -7,7 +7,6 @@
   <style>
     :root{
       --bg:#071126; --panel:#0b2130; --accent:#00c6ff; --good:#00d38a; --bad:#ff6b6b; --muted:#9fbfdc;
-      --glass: rgba(255,255,255,0.03);
     }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0;background:linear-gradient(180deg,#020415,#031128);color:#e6f7ff;font-family:Inter,system-ui,Segoe UI,Arial}
@@ -43,10 +42,10 @@
   <header>
     <div>
       <h1>Rogue AP — Professional Command Center</h1>
-      <p class="small">Real-time simulation — adjustable environment and advanced signal model. Click <strong>Start / Reset</strong> to apply parameter changes.</p>
+      <p class="small">Real-time simulation — adjust controls, then click <strong>Start / Reset</strong> to apply changes.</p>
     </div>
     <div style="text-align:right">
-      <div class="small">Status: <strong style="color:var(--accent)">Ready</strong></div>
+      <div class="small">Status: <strong id="status" style="color:var(--accent)">Loading...</strong></div>
     </div>
   </header>
 
@@ -250,20 +249,28 @@ class RogueAPSimulation:
 const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
 const overlay = document.getElementById('overlay');
 const statTrusted = document.getElementById('statTrusted'), statRogue = document.getElementById('statRogue'), statTick = document.getElementById('statTick');
+const statusEl = document.getElementById('status');
 let pyodide=null, sim=null, animId=null, auto=false;
 
 async function init(){
-  pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.29.0/full/'});
-  pyodide.runPython(PY_CODE);
-  pyodide.runPython('sim = RogueAPSimulation()');
-  sim = pyodide.globals.get('sim');
-  resize();
-  // apply initial parameters only when Start clicked; do not auto-update
-  requestAnimationFrame(renderLoop);
+  try{
+    statusEl.innerText = 'Loading Pyodide...';
+    pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.29.0/full/'});
+    console.log('pyodide ready');
+    pyodide.runPython(PY_CODE);
+    pyodide.runPython('sim = RogueAPSimulation()');
+    sim = pyodide.globals.get('sim');
+    statusEl.innerText = 'Ready';
+    resize();
+    requestAnimationFrame(renderLoop);
+  }catch(e){
+    console.error('Pyodide init error', e);
+    statusEl.innerText = 'Error';
+  }
 }
 
 function setAllParamsToPython(){
-  // gather UI values and call sim.set_params once
+  if(!pyodide) { console.warn('pyodide not ready'); return; }
   const params = {
     n_clients: parseInt(document.getElementById('numClients').value),
     mobility: parseFloat(document.getElementById('mobility').value),
@@ -277,9 +284,12 @@ function setAllParamsToPython(){
     preset: document.getElementById('preset').value.toLowerCase(),
     rogue_behavior: document.getElementById('rogueBehavior').value
   };
-  // build kw string safely
   const kw = Object.entries(params).map(([k,v])=>`${k}=${JSON.stringify(v)}`).join(',');
-  pyodide.runPython(`sim.set_params(${kw})`);
+  try{
+    pyodide.runPython(`sim.set_params(${kw})`);
+  }catch(e){
+    console.error('set_params failed', e, kw);
+  }
 }
 
 function resize(){ const r=canvas.getBoundingClientRect(); canvas.width = Math.floor(r.width); canvas.height = Math.floor(r.height); }
@@ -304,7 +314,7 @@ function drawRadar(cx,cy,r){
 
 function color(hex, a){ const m={'accent':[0,198,255],'good':[0,211,138],'bad':[255,107,107]}; const c=m[hex]||[200,200,200]; return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
 
-function drawAP(ap, col, label){
+function drawAP(ap, label){
   const sx=canvas.width/1200, sy=canvas.height/760; const x=ap.x*sx, y=ap.y*sy;
   const radius = Math.min(900, ap.power*1.2)*(canvas.width/1200);
   const g=ctx.createRadialGradient(x,y,0,x,y,radius);
@@ -337,8 +347,8 @@ async function renderLoop(){
     document.body.style.background = `linear-gradient(180deg, rgba(${18+jam*9},${28-jam},${40+jam*4},1), #011024)`;
     drawGrid();
     drawRadar((st.trusted.x+st.rogue.x)/2*(canvas.width/1200),(st.trusted.y+st.rogue.y)/2*(canvas.height/760), Math.min(canvas.width,canvas.height)/2.4);
-    drawAP(st.trusted,'accent','Trusted');
-    drawAP(st.rogue,'bad','Rogue');
+    drawAP(st.trusted,'Trusted');
+    drawAP(st.rogue,'Rogue');
     st.clients.forEach(c=> drawClient(c,st));
     statTrusted.innerText = st.clients.filter(c=>c.connected==='trusted').length;
     statRogue.innerText = st.clients.filter(c=>c.connected==='rogue').length;
@@ -346,22 +356,28 @@ async function renderLoop(){
     overlay.innerText = `Jamming: ${st.params.jamming} • Noise: ${st.params.noise_floor}dB • EncRate: ${Math.round(st.params.enc_rate*100)}%`;
   }catch(e){ console.error('render error', e); }
   if(auto){
-    try{ pyodide.runPython('sim.step()'); }catch(e){ console.error(e); }
+    try{ await pyodide.runPythonAsync('sim.step()'); }catch(e){ console.error(e); }
   }
   animId = requestAnimationFrame(renderLoop);
 }
 
-/* UI wiring: only apply when Start clicked */
+/* UI wiring: Start applies ALL params and re-initializes the sim. */
 document.getElementById('startBtn').addEventListener('click', async ()=>{
-  if(!pyodide) return;
-  setAllParamsToPython();              // update sim params
-  pyodide.runPython('sim._init_environment()'); // re-initialize environment (clients, positions)
+  if(!pyodide){ alert('Runtime not ready yet — wait a moment.'); return; }
+  // collect params and set in Python
+  setAllParamsToPython();
+  // re-init environment so clients/positions reflect the new params
+  try{
+    await pyodide.runPythonAsync('sim._init_environment()');
+    // do one step so UI updates quickly
+    await pyodide.runPythonAsync('sim.step()');
+  }catch(e){
+    console.error('Error during re-init', e);
+  }
 });
 
-document.getElementById('stepBtn').addEventListener('click', ()=>{ if(pyodide) pyodide.runPython('sim.step()'); });
-document.getElementById('autoBtn').addEventListener('click', ()=>{
-  auto = !auto; document.getElementById('autoBtn').innerText = auto ? 'Stop' : 'Auto';
-});
+document.getElementById('stepBtn').addEventListener('click', async ()=>{ if(pyodide) { await pyodide.runPythonAsync('sim.step()'); }});
+document.getElementById('autoBtn').addEventListener('click', ()=>{ auto = !auto; document.getElementById('autoBtn').innerText = auto ? 'Stop' : 'Auto'; });
 
 /* helper: set params (same as earlier) */
 function setAllParamsToPython(){
@@ -379,12 +395,17 @@ function setAllParamsToPython(){
     rogue_behavior: document.getElementById('rogueBehavior').value
   };
   const kw = Object.entries(params).map(([k,v])=>`${k}=${JSON.stringify(v)}`).join(',');
-  pyodide.runPython(`sim.set_params(${kw})`);
+  try{
+    pyodide.runPython(`sim.set_params(${kw})`);
+    console.log('Parameters applied:', params);
+  }catch(e){
+    console.error('set_params failed', e);
+  }
 }
 
 /* init */
 window.addEventListener('resize', resize);
-(async ()=>{ await init(); })();
+init();
   </script>
 </body>
 </html>
