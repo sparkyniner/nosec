@@ -13,28 +13,21 @@
     header{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;background:linear-gradient(90deg,rgba(255,255,255,0.02),transparent)}
     header h1{margin:0;font-size:18px;font-weight:600;color:var(--accent)}
     header p{margin:0;color:var(--muted);font-size:13px}
-
     .layout{display:grid;grid-template-columns:340px 1fr;gap:16px;padding:18px}
     .panel{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.03)}
-
     .controls label{display:block;font-size:13px;color:#dff6ff;margin:8px 0}
     select,input,button{font-family:inherit}
     input[type=range]{width:100%}
     input[type=number]{width:100px;padding:6px;border-radius:6px;border:none;background:transparent;color:#e6f7ff}
-
     .row{display:flex;gap:8px;align-items:center}
     .small{font-size:12px;color:var(--muted)}
-    .btn{background:linear-gradient(90deg,var(--accent),#75e6ff);color:#012; padding:8px 10px;border-radius:8px;border:none;cursor:pointer;font-weight:600}
+    .btn{background:linear-gradient(90deg,var(--accent),#75e6ff);color:#012;padding:8px 10px;border-radius:8px;border:none;cursor:pointer;font-weight:600}
     .ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted);padding:8px;border-radius:8px}
-
     .stats{display:flex;gap:8px;margin-top:12px}
     .stat{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;min-width:80px;text-align:center}
-
-    /* canvas layout */
     .visual{position:relative}
     canvas{width:100%;height:760px;border-radius:10px;display:block;background:linear-gradient(180deg,#011027,#00101a)}
     .overlay{position:absolute;right:18px;top:18px;background:rgba(2,8,16,0.5);padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);color:var(--muted)}
-
     .footer{margin-top:12px;color:var(--muted);font-size:13px}
   </style>
 </head>
@@ -129,7 +122,7 @@
   <script src="https://cdn.jsdelivr.net/pyodide/v0.29.0/full/pyodide.js"></script>
   <script>
 /* --------------------
-   PYTHON SIM (embedded)
+   PYTHON SIM (fixed)
    -------------------- */
 const PY_CODE = `
 import math, random
@@ -161,86 +154,83 @@ class RogueAPSimulation:
             else: x=random.uniform(60,1120); y=random.uniform(220,700)
             enc = 'WPA3' if random.random() < p['enc_rate'] else ('WPA2' if random.random()<0.85 else 'OPEN')
             trust = max(0.05, min(0.98, random.gauss(0.6,0.18)))
-            c = {'id':i+1,'x':x,'y':y,'vx':random.uniform(-0.8,0.8),'vy':random.uniform(-0.6,0.6),'connected':None,'last_switch':0,'trust':trust,'encryption':enc}
+            c = {'id':i+1,'x':x,'y':y,'vx':random.uniform(-0.8,0.8),'vy':random.uniform(-0.6,0.6),
+                 'connected':None,'last_switch':0,'trust':trust,'encryption':enc}
             self.clients.append(c)
         for c in self.clients: self._decide_connection(c,initial=True)
 
     def set_params(self, **kwargs):
-        # update param values; for n_clients trigger re-init
-        for k,v in kwargs.items():
+        reinit = False
+        for k, v in kwargs.items():
             if k == 'n_clients':
                 self.params['n_clients'] = int(v)
-                self._init_environment()
-                return
-            self.params[k] = v
-        self.trusted['power'] = float(self.params['trusted_power'])
-        self.rogue['power'] = float(self.params['rogue_power'])
+                reinit = True
+            else:
+                self.params[k] = v
+        # ensure powers are in sync with params
+        self.trusted['power'] = float(self.params.get('trusted_power', self.trusted.get('power', 140.0)))
+        self.rogue['power'] = float(self.params.get('rogue_power', self.rogue.get('power', 220.0)))
+        if reinit:
+            self._init_environment()
 
     def _dist(self,a,b): return math.hypot(a['x']-b['x'], a['y']-b['y'])
-
-    def _pathloss(self,ap,client):
-        d = max(1.0, self._dist(ap, client))
-        return ap['power'] / (1.0 + (d**1.8)/4000.0)
-
+    def _pathloss(self,ap,client): d=max(1.0,self._dist(ap,client)); return ap['power']/(1+(d**1.8)/4000.0)
     def _rssi(self,ap,client):
-        base = self._pathloss(ap,client)
-        ch_pen = max(0, (self.params['channel_overlap'] - abs(ap['channel'] - self.trusted['channel']))) * 2.0
-        noise = random.uniform(-3,3) + (self.params['noise_floor']*0.1)
-        jam_penalty = self.params['jamming'] * 1.2
-        return base - ch_pen - jam_penalty + noise
+        base=self._pathloss(ap,client)
+        ch_pen=max(0,(self.params['channel_overlap']-abs(ap['channel']-self.trusted['channel'])))*2.0
+        noise=random.uniform(-3,3)+(self.params['noise_floor']*0.1)
+        jam_penalty=self.params['jamming']*1.2
+        return base-ch_pen-jam_penalty+noise
 
-    def _decision_score(self, ap, client):
-        rssi = self._rssi(ap, client)
-        enc_bonus = 6.0 if client['encryption']=='WPA3' else (3.0 if client['encryption']=='WPA2' else 0.0)
-        trust_factor = client['trust'] * (1.0 if ap is self.trusted else (1 - self.params['vigilance']))
-        return rssi + enc_bonus + trust_factor
+    def _decision_score(self,ap,client):
+        rssi=self._rssi(ap,client)
+        enc_bonus=6.0 if client['encryption']=='WPA3' else (3.0 if client['encryption']=='WPA2' else 0.0)
+        trust_factor=client['trust']*(1.0 if ap is self.trusted else (1-self.params['vigilance']))
+        return rssi+enc_bonus+trust_factor
 
-    def _decide_connection(self, client, initial=False):
-        st = self._decision_score(self.trusted, client)
-        sr = self._decision_score(self.rogue, client) - (12.0 * (1 - client['trust']))
-        since = self.tick - client['last_switch']
-        threshold = 5 - min(3, since/5.0)
+    def _decide_connection(self,client,initial=False):
+        st=self._decision_score(self.trusted,client)
+        sr=self._decision_score(self.rogue,client)-(12.0*(1-client['trust']))
+        since=self.tick-client['last_switch']
+        threshold=5-min(3,since/5.0)
         if initial and client['connected'] is None:
-            client['connected'] = 'trusted' if st >= sr else 'rogue'; client['last_switch']=self.tick; return
-        if sr - st > threshold:
-            if client['connected'] != 'rogue': client['connected'] = 'rogue'; client['last_switch'] = self.tick; self.alerts +=1
-        elif st - sr > threshold:
-            if client['connected'] != 'trusted': client['connected']='trusted'; client['last_switch']=self.tick
+            client['connected']='trusted' if st>=sr else 'rogue'; client['last_switch']=self.tick; return
+        if sr-st>threshold:
+            if client['connected']!='rogue': client['connected']='rogue'; client['last_switch']=self.tick; self.alerts+=1
+        elif st-sr>threshold:
+            if client['connected']!='trusted': client['connected']='trusted'; client['last_switch']=self.tick
 
     def step(self):
-        self.tick += 1
-        rb = self.params.get('rogue_behavior','pulsed')
+        self.tick+=1
+        rb=self.params.get('rogue_behavior','pulsed')
         if rb=='pulsed':
-            if random.random() < 0.25: self.rogue['power'] += random.uniform(8,28)
-            else: self.rogue['power'] += random.uniform(-2,4)
+            if random.random()<0.25: self.rogue['power']+=random.uniform(8,28)
+            else: self.rogue['power']+=random.uniform(-2,4)
         elif rb=='adaptive':
-            weak = [ (c['x'],c['y']) for c in self.clients if c['connected']=='trusted' and c['trust']<0.6 ]
+            weak=[(c['x'],c['y']) for c in self.clients if c['connected']=='trusted' and c['trust']<0.6]
             if weak:
-                cx = sum(p[0] for p in weak)/len(weak); cy = sum(p[1] for p in weak)/len(weak)
-                self.rogue['x'] += (cx - self.rogue['x'])*0.06; self.rogue['y'] += (cy - self.rogue['y'])*0.06
-                self.rogue['power'] += random.uniform(-1,5)
-            else:
-                self.rogue['power'] += random.uniform(-1,1)
-        elif rb=='stealth': self.rogue['power'] += random.uniform(0,3)
-        else: self.rogue['power'] += random.uniform(-1,1)
-        self.rogue['power'] = max(20.0, min(1200.0, self.rogue['power']))
-        self.trusted['power'] = max(20.0, min(1200.0, float(self.params['trusted_power'])))
+                cx=sum(p[0] for p in weak)/len(weak); cy=sum(p[1] for p in weak)/len(weak)
+                self.rogue['x']+=(cx-self.rogue['x'])*0.06; self.rogue['y']+=(cy-self.rogue['y'])*0.06
+                self.rogue['power']+=random.uniform(-1,5)
+            else: self.rogue['power']+=random.uniform(-1,1)
+        elif rb=='stealth': self.rogue['power']+=random.uniform(0,3)
+        else: self.rogue['power']+=random.uniform(-1,1)
+        self.rogue['power']=max(20.0,min(1200.0,self.rogue['power']))
         for c in self.clients:
             if self.params['mobility']>0:
-                c['vx'] += random.uniform(-0.12,0.12)*(self.params['mobility']/4.0); c['vy'] += random.uniform(-0.08,0.08)*(self.params['mobility']/4.0)
-                speed = math.hypot(c['vx'],c['vy'])
-                if speed>3.5: c['vx'] *= 3.5/speed; c['vy'] *= 3.5/speed
-                c['x'] += c['vx']; c['y'] += c['vy']
-                c['x'] = max(40, min(self.width-40, c['x'])); c['y'] = max(160, min(self.height-40, c['y']))
-            if random.random() < 0.02: c['last_switch'] = max(0, c['last_switch'] - 1)
+                c['vx']+=random.uniform(-0.12,0.12)*(self.params['mobility']/4.0)
+                c['vy']+=random.uniform(-0.08,0.08)*(self.params['mobility']/4.0)
+                speed=math.hypot(c['vx'],c['vy'])
+                if speed>3.5: c['vx']*=3.5/speed; c['vy']*=3.5/speed
+                c['x']+=c['vx']; c['y']+=c['vy']
+                c['x']=max(40,min(self.width-40,c['x'])); c['y']=max(160,min(self.height-40,c['y']))
+            if random.random()<0.02: c['last_switch']=max(0,c['last_switch']-1)
             self._decide_connection(c)
 
     def get_state(self):
-        return {
-            'tick': self.tick, 'alerts': self.alerts,
-            'trusted': dict(self.trusted), 'rogue': dict(self.rogue),
-            'clients': [dict(c) for c in self.clients], 'params': dict(self.params)
-        }
+        return {'tick':self.tick,'alerts':self.alerts,
+                'trusted':dict(self.trusted),'rogue':dict(self.rogue),
+                'clients':[dict(c) for c in self.clients],'params':dict(self.params)}
 `;
 
 /* --------------------
@@ -250,13 +240,26 @@ const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
 const overlay = document.getElementById('overlay');
 const statTrusted = document.getElementById('statTrusted'), statRogue = document.getElementById('statRogue'), statTick = document.getElementById('statTick');
 const statusEl = document.getElementById('status');
+
+// input shortcuts
+const numClients = document.getElementById('numClients');
+const mobility = document.getElementById('mobility');
+const jamming = document.getElementById('jamming');
+const noiseFloor = document.getElementById('noiseFloor');
+const channelOverlap = document.getElementById('channelOverlap');
+const encRate = document.getElementById('encRate');
+const vigilance = document.getElementById('vigilance');
+const trustedPower = document.getElementById('trustedPower');
+const roguePower = document.getElementById('roguePower');
+const preset = document.getElementById('preset');
+const rogueBehavior = document.getElementById('rogueBehavior');
+
 let pyodide=null, sim=null, animId=null, auto=false;
 
 async function init(){
   try{
     statusEl.innerText = 'Loading Pyodide...';
     pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.29.0/full/'});
-    console.log('pyodide ready');
     pyodide.runPython(PY_CODE);
     pyodide.runPython('sim = RogueAPSimulation()');
     sim = pyodide.globals.get('sim');
@@ -269,26 +272,29 @@ async function init(){
   }
 }
 
-function setAllParamsToPython(){
-  if(!pyodide) { console.warn('pyodide not ready'); return; }
-  const params = {
-    n_clients: parseInt(document.getElementById('numClients').value),
-    mobility: parseFloat(document.getElementById('mobility').value),
-    jamming: parseFloat(document.getElementById('jamming').value),
-    noise_floor: parseFloat(document.getElementById('noiseFloor').value),
-    channel_overlap: parseFloat(document.getElementById('channelOverlap').value),
-    enc_rate: parseFloat(document.getElementById('encRate').value)/100.0,
-    vigilance: parseFloat(document.getElementById('vigilance').value),
-    trusted_power: parseFloat(document.getElementById('trustedPower').value),
-    rogue_power: parseFloat(document.getElementById('roguePower').value),
-    preset: document.getElementById('preset').value.toLowerCase(),
-    rogue_behavior: document.getElementById('rogueBehavior').value
+function collectParams(){
+  return {
+    n_clients: parseInt(numClients.value),
+    mobility: parseFloat(mobility.value),
+    jamming: parseFloat(jamming.value),
+    noise_floor: parseFloat(noiseFloor.value),
+    channel_overlap: parseFloat(channelOverlap.value),
+    enc_rate: parseFloat(encRate.value)/100.0,
+    vigilance: parseFloat(vigilance.value),
+    trusted_power: parseFloat(trustedPower.value),
+    rogue_power: parseFloat(roguePower.value),
+    preset: preset.value.toLowerCase(),
+    rogue_behavior: rogueBehavior.value
   };
+}
+
+async function applyParams(){
+  const params = collectParams();
   const kw = Object.entries(params).map(([k,v])=>`${k}=${JSON.stringify(v)}`).join(',');
   try{
-    pyodide.runPython(`sim.set_params(${kw})`);
+    await pyodide.runPythonAsync(`sim.set_params(${kw})`);
   }catch(e){
-    console.error('set_params failed', e, kw);
+    console.error('applyParams failed', e);
   }
 }
 
@@ -312,7 +318,11 @@ function drawRadar(cx,cy,r){
   sweep += 0.02;
 }
 
-function color(hex, a){ const m={'accent':[0,198,255],'good':[0,211,138],'bad':[255,107,107]}; const c=m[hex]||[200,200,200]; return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
+function color(name, a){
+  const m={'accent':[0,198,255],'good':[0,211,138],'bad':[255,107,107]};
+  const c=m[name]||[200,200,200];
+  return `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+}
 
 function drawAP(ap, label){
   const sx=canvas.width/1200, sy=canvas.height/760; const x=ap.x*sx, y=ap.y*sy;
@@ -324,26 +334,32 @@ function drawAP(ap, label){
   ctx.fillStyle='#e6fbff'; ctx.font='12px Arial'; ctx.fillText(label + ` s=${Math.round(ap.power)}`, x+12, y+4);
 }
 
+function calcSignal(ap, client){ const d = Math.hypot(ap.x-client.x, ap.y-client.y)+1; return ap.power / (1 + (d**1.8)/4000.0); }
+
+function drawMini(x,y,st,sr){
+  const maxw=44; const total=Math.max(st,sr,6); const w1=Math.min(maxw,(st/total)*maxw); const w2=Math.min(maxw,(sr/total)*maxw);
+  ctx.fillStyle=color('good',0.9); ctx.fillRect(x,y,w1,4);
+  ctx.fillStyle=color('bad',0.9); ctx.fillRect(x,y+6,w2,4);
+  ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.strokeRect(x,y,maxw,10);
+}
+
 function drawClient(c, state){
   const sx=canvas.width/1200, sy=canvas.height/760; const x=c.x*sx, y=c.y*sy;
   ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2); ctx.fillStyle = c.connected==='rogue' ? color('bad',0.95) : color('good',0.95); ctx.fill();
   ctx.fillStyle='#e6fbff'; ctx.font='11px Arial'; ctx.fillText('C'+c.id, x+10, y+4);
   const st = calcSignal(state.trusted, c); const sr = calcSignal(state.rogue, c); drawMini(x-16,y-18,st,sr);
   const ap = c.connected==='rogue' ? state.rogue : state.trusted;
-  if(ap){ ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(ap.x*sx, ap.y*sy); ctx.strokeStyle = c.connected==='rogue'? color('bad',0.4) : color('good',0.35); ctx.lineWidth=1.2; ctx.stroke(); }
+  if(ap){ ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(ap.x*(canvas.width/1200), ap.y*(canvas.height/760)); ctx.strokeStyle = c.connected==='rogue'? color('bad',0.4) : color('good',0.35); ctx.lineWidth=1.2; ctx.stroke(); }
 }
-
-function calcSignal(ap, client){ const d = Math.hypot(ap.x-client.x, ap.y-client.y)+1; return ap.power / (1 + (d**1.8)/4000.0); }
-function drawMini(x,y,st,sr){ const maxw=44; const total=Math.max(st,sr,6); const w1=Math.min(maxw,(st/total)*maxw); const w2=Math.min(maxw,(sr/total)*maxw); ctx.fillStyle=color('good',0.9); ctx.fillRect(x,y,w1,4); ctx.fillStyle=color('bad',0.9); ctx.fillRect(x,y+6,w2,4); ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.strokeRect(x,y,maxw,10); }
 
 async function renderLoop(){
   resize();
   if(!pyodide) { requestAnimationFrame(renderLoop); return; }
   try{
     const st_py = pyodide.runPython('sim.get_state()');
-    const st = st_py.toJs();
+    const st = st_py.toJs ? st_py.toJs() : st_py;
     // dynamic env visual cue (background tint) based on jamming
-    const jam = st.params.jamming || 0;
+    const jam = st.params.jamming || st.params.jamming === 0 ? st.params.jamming : 0;
     document.body.style.background = `linear-gradient(180deg, rgba(${18+jam*9},${28-jam},${40+jam*4},1), #011024)`;
     drawGrid();
     drawRadar((st.trusted.x+st.rogue.x)/2*(canvas.width/1200),(st.trusted.y+st.rogue.y)/2*(canvas.height/760), Math.min(canvas.width,canvas.height)/2.4);
@@ -361,50 +377,21 @@ async function renderLoop(){
   animId = requestAnimationFrame(renderLoop);
 }
 
-/* UI wiring: Start applies ALL params and re-initializes the sim. */
+/* UI wiring */
 document.getElementById('startBtn').addEventListener('click', async ()=>{
   if(!pyodide){ alert('Runtime not ready yet — wait a moment.'); return; }
-  // collect params and set in Python
-  setAllParamsToPython();
-  // re-init environment so clients/positions reflect the new params
+  await applyParams();
+  // re-init environment so clients/positions reflect the new params (keeps behavior explicit)
   try{
     await pyodide.runPythonAsync('sim._init_environment()');
-    // do one step so UI updates quickly
     await pyodide.runPythonAsync('sim.step()');
-  }catch(e){
-    console.error('Error during re-init', e);
-  }
+  }catch(e){ console.error('Error during re-init', e); }
 });
 
 document.getElementById('stepBtn').addEventListener('click', async ()=>{ if(pyodide) { await pyodide.runPythonAsync('sim.step()'); }});
 document.getElementById('autoBtn').addEventListener('click', ()=>{ auto = !auto; document.getElementById('autoBtn').innerText = auto ? 'Stop' : 'Auto'; });
 
-/* helper: set params (same as earlier) */
-function setAllParamsToPython(){
-  const params = {
-    n_clients: parseInt(document.getElementById('numClients').value),
-    mobility: parseFloat(document.getElementById('mobility').value),
-    jamming: parseFloat(document.getElementById('jamming').value),
-    noise_floor: parseFloat(document.getElementById('noiseFloor').value),
-    channel_overlap: parseFloat(document.getElementById('channelOverlap').value),
-    enc_rate: parseFloat(document.getElementById('encRate').value)/100.0,
-    vigilance: parseFloat(document.getElementById('vigilance').value),
-    trusted_power: parseFloat(document.getElementById('trustedPower').value),
-    rogue_power: parseFloat(document.getElementById('roguePower').value),
-    preset: document.getElementById('preset').value.toLowerCase(),
-    rogue_behavior: document.getElementById('rogueBehavior').value
-  };
-  const kw = Object.entries(params).map(([k,v])=>`${k}=${JSON.stringify(v)}`).join(',');
-  try{
-    pyodide.runPython(`sim.set_params(${kw})`);
-    console.log('Parameters applied:', params);
-  }catch(e){
-    console.error('set_params failed', e);
-  }
-}
-
-/* init */
-window.addEventListener('resize', resize);
+/* start */
 init();
   </script>
 </body>
