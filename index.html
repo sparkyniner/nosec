@@ -1,398 +1,592 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Rogue AP — Command Center (Professional)</title>
-  <style>
-    :root{
-      --bg:#071126; --panel:#0b2130; --accent:#00c6ff; --good:#00d38a; --bad:#ff6b6b; --muted:#9fbfdc;
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%;margin:0;background:linear-gradient(180deg,#020415,#031128);color:#e6f7ff;font-family:Inter,system-ui,Segoe UI,Arial}
-    header{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;background:linear-gradient(90deg,rgba(255,255,255,0.02),transparent)}
-    header h1{margin:0;font-size:18px;font-weight:600;color:var(--accent)}
-    header p{margin:0;color:var(--muted);font-size:13px}
-    .layout{display:grid;grid-template-columns:340px 1fr;gap:16px;padding:18px}
-    .panel{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.03)}
-    .controls label{display:block;font-size:13px;color:#dff6ff;margin:8px 0}
-    select,input,button{font-family:inherit}
-    input[type=range]{width:100%}
-    input[type=number]{width:100px;padding:6px;border-radius:6px;border:none;background:transparent;color:#e6f7ff}
-    .row{display:flex;gap:8px;align-items:center}
-    .small{font-size:12px;color:var(--muted)}
-    .btn{background:linear-gradient(90deg,var(--accent),#75e6ff);color:#012;padding:8px 10px;border-radius:8px;border:none;cursor:pointer;font-weight:600}
-    .ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted);padding:8px;border-radius:8px}
-    .stats{display:flex;gap:8px;margin-top:12px}
-    .stat{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;min-width:80px;text-align:center}
-    .visual{position:relative}
-    canvas{width:100%;height:760px;border-radius:10px;display:block;background:linear-gradient(180deg,#011027,#00101a)}
-    .overlay{position:absolute;right:18px;top:18px;background:rgba(2,8,16,0.5);padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);color:var(--muted)}
-    .footer{margin-top:12px;color:var(--muted);font-size:13px}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>WhisperLeak — Pyodide Benchmark (Full Demo)</title>
+
+<!-- Plotly for charts -->
+<script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+
+<style>
+  :root{
+    --bg:#061026; --panel:#0b1b2a; --accent:#00c6ff; --muted:#9fb1c8; --good:#00d38a; --danger:#ff6b6b;
+    --glass: rgba(255,255,255,0.03);
+  }
+  body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:#e6f2ff}
+  header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid rgba(255,255,255,0.03)}
+  .brand{display:flex;gap:12px;align-items:center}
+  .logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,#003b53,#004d6b);display:flex;align-items:center;justify-content:center;font-weight:800;color:white}
+  .title{font-size:18px;margin:0}
+  .subtitle{font-size:12px;color:var(--muted)}
+  .layout{display:grid;grid-template-columns:360px 1fr;gap:16px;padding:18px}
+  .panel{background:var(--panel);padding:14px;border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,0.6)}
+  .controls label{display:block;font-size:13px;color:var(--muted);margin-top:10px}
+  .controls input[type=range]{width:100%}
+  .controls input[type=number]{width:100%}
+  button{background:var(--accent);border:none;padding:9px 12px;border-radius:8px;color:#012;cursor:pointer;font-weight:700}
+  button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+  #canvas{width:100%;height:320px;border-radius:8px;background:#06111a;display:block}
+  #feed{height:200px;overflow:auto;background:linear-gradient(180deg,#041022,#071426);padding:8px;border-radius:8px;font-family:monospace;font-size:13px}
+  .row{display:flex;gap:10px}
+  table{width:100%;border-collapse:collapse;color:#dbe9f8}
+  th,td{padding:6px;border-bottom:1px solid rgba(255,255,255,0.03);text-align:left;font-size:13px}
+  .small{font-size:12px;color:var(--muted)}
+  footer{padding:12px 18px;color:var(--muted);font-size:12px}
+  .loader{display:inline-block;color:var(--muted);font-size:13px;margin-left:8px}
+  #plots{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+</style>
 </head>
 <body>
-  <header>
+
+<header>
+  <div class="brand">
+    <div class="logo">WL</div>
     <div>
-      <h1>Rogue AP — Professional Command Center</h1>
-      <p class="small">Real-time simulation — adjust controls, then click <strong>Start / Reset</strong> to apply changes.</p>
-    </div>
-    <div style="text-align:right">
-      <div class="small">Status: <strong id="status" style="color:var(--accent)">Loading...</strong></div>
-    </div>
-  </header>
-
-  <div class="layout">
-    <div class="panel" id="controls">
-      <label>Scenario preset
-        <select id="preset">
-          <option value="urban">Urban — dense, high interference</option>
-          <option value="campus">Campus — mixed density</option>
-          <option value="field">Field — sparse</option>
-          <option value="advanced">Advanced — dynamic hotspots</option>
-        </select>
-      </label>
-
-      <label>Clients
-        <input id="numClients" type="number" value="30" min="3" max="200">
-      </label>
-
-      <label>Mobility (0–10)
-        <input id="mobility" type="range" min="0" max="10" value="5">
-      </label>
-
-      <label>Trusted AP Power
-        <input id="trustedPower" type="range" min="20" max="600" value="140">
-      </label>
-
-      <label>Rogue AP Power
-        <input id="roguePower" type="range" min="20" max="800" value="220">
-      </label>
-
-      <label>Jamming Intensity (0–10)
-        <input id="jamming" type="range" min="0" max="10" value="2">
-      </label>
-
-      <label>Noise Floor (dB)
-        <input id="noiseFloor" type="range" min="-10" max="30" value="6">
-      </label>
-
-      <label>Channel Overlap (0–8)
-        <input id="channelOverlap" type="range" min="0" max="8" value="2">
-      </label>
-
-      <label>Encryption Adoption Rate (%)
-        <input id="encRate" type="range" min="0" max="100" value="65">
-      </label>
-
-      <label>Client Vigilance (0–1)
-        <input id="vigilance" type="range" min="0" max="1" step="0.01" value="0.65">
-      </label>
-
-      <label>Rogue Behavior
-        <select id="rogueBehavior">
-          <option value="static">Static</option>
-          <option value="pulsed">Pulsed Boost</option>
-          <option value="adaptive">Adaptive (moves to weak clusters)</option>
-          <option value="stealth">Stealth (slow rise)</option>
-        </select>
-      </label>
-
-      <div class="row" style="margin-top:10px">
-        <button id="startBtn" class="btn">Start / Reset</button>
-        <button id="autoBtn" class="ghost">Auto</button>
-        <button id="stepBtn" class="ghost">Step</button>
-      </div>
-
-      <div class="stats">
-        <div class="stat">Trusted<br><strong id="statTrusted">0</strong></div>
-        <div class="stat">Rogue<br><strong id="statRogue">0</strong></div>
-        <div class="stat">Tick<br><strong id="statTick">0</strong></div>
-      </div>
-
-      <div class="footer">Environment updates when you click <b>Start / Reset</b>. Use <b>Auto</b> for continuous running.</div>
-    </div>
-
-    <div class="panel visual">
-      <canvas id="canvas" width="1200" height="760"></canvas>
-      <div class="overlay" id="overlay">Live telemetry</div>
+      <div class="title">WhisperLeak — Pyodide Benchmark Demo</div>
+      <div class="subtitle">Client-side, synthetic simulation of token timing/size leakage • Defensive research demo</div>
     </div>
   </div>
+  <div class="small">Everything runs in your browser. No servers. No API keys. <span id="pystatus" class="loader">Loading Pyodide…</span></div>
+</header>
 
-  <script src="https://cdn.jsdelivr.net/pyodide/v0.29.0/full/pyodide.js"></script>
-  <script>
-/* --------------------
-   PYTHON SIM (fixed)
-   -------------------- */
-const PY_CODE = `
-import math, random
-class RogueAPSimulation:
-    def __init__(self):
-        self.width = 1200
-        self.height = 760
-        self.tick = 0
-        self.alerts = 0
-        self.params = {
-            'mobility':5.0, 'jamming':2.0, 'noise_floor':6.0, 'channel_overlap':2,
-            'enc_rate':0.65, 'vigilance':0.65, 'trusted_power':140.0, 'rogue_power':220.0,
-            'preset':'urban', 'rogue_behavior':'pulsed', 'n_clients':30
-        }
-        self._init_environment()
+<div class="layout">
+  <!-- LEFT: controls + explanation -->
+  <div class="panel controls">
+    <h3 style="margin:0 0 8px 0">Controls & explanation</h3>
+    <p class="small">
+      This demo generates synthetic streamed outputs (token size + inter-arrival) for three *topics* and trains
+      a toy attacker to classify topic from timing/size features. It implements defensive techniques (padding, batching, dummy packets),
+      measures attacker accuracy and cost proxies (bandwidth, latency), computes a coarse mutual-information estimate,
+      and shows results live with charts and a streaming animation.
+    </p>
 
-    def _init_environment(self):
-        p = self.params
-        random.seed(100 + int(p['trusted_power']) + int(p['rogue_power']))
-        self.tick = 0; self.alerts = 0
-        self.trusted = {'x':300.0,'y':180.0,'power':float(p['trusted_power']),'channel':1}
-        self.rogue = {'x':820.0,'y':220.0,'power':float(p['rogue_power']),'channel':6}
-        self.clients = []
-        n = int(self.params.get('n_clients',30))
-        for i in range(n):
-            if p['preset']=='urban': x=random.uniform(80,1120); y=random.uniform(220,700)
-            elif p['preset']=='campus': x=random.uniform(120,980); y=random.uniform(240,620)
-            elif p['preset']=='field': x=random.uniform(40,1160); y=random.uniform(280,720)
-            else: x=random.uniform(60,1120); y=random.uniform(220,700)
-            enc = 'WPA3' if random.random() < p['enc_rate'] else ('WPA2' if random.random()<0.85 else 'OPEN')
-            trust = max(0.05, min(0.98, random.gauss(0.6,0.18)))
-            c = {'id':i+1,'x':x,'y':y,'vx':random.uniform(-0.8,0.8),'vy':random.uniform(-0.6,0.6),
-                 'connected':None,'last_switch':0,'trust':trust,'encryption':enc}
-            self.clients.append(c)
-        for c in self.clients: self._decide_connection(c,initial=True)
+    <label>Conversations per topic: <strong id="n_per_topic_label">250</strong></label>
+    <input id="n_per_topic" type="range" min="50" max="600" value="250" step="50" />
 
-    def set_params(self, **kwargs):
-        reinit = False
-        for k, v in kwargs.items():
-            if k == 'n_clients':
-                self.params['n_clients'] = int(v)
-                reinit = True
+    <label>Tokens per conversation: <strong id="n_tokens_label">80</strong></label>
+    <input id="n_tokens" type="range" min="20" max="200" value="80" step="10" />
+
+    <label>Streaming modes (used for transfer experiments)</label>
+    <div class="row" style="margin-bottom:8px">
+      <label><input type="checkbox" id="mode_token" checked/> token</label>
+      <label style="margin-left:6px"><input type="checkbox" id="mode_chunk" checked/> chunk</label>
+    </div>
+
+    <label>Defenses (toggle to enable; parameters apply when running benchmark)</label>
+    <div style="margin-bottom:8px">
+      <label><input type="checkbox" id="use_padding" /> Fixed padding</label>
+      <input id="pad_to" type="number" value="100" min="20" max="400" style="width:100px;margin-left:8px" />
+    </div>
+
+    <div style="margin-bottom:8px">
+      <label><input type="checkbox" id="use_batch" /> Randomized batching</label>
+      <input id="batch_mean" type="number" value="4" min="1" max="12" style="width:100px;margin-left:8px" />
+    </div>
+
+    <div style="margin-bottom:8px">
+      <label><input type="checkbox" id="use_dummy" /> Dummy packet insertion</label>
+      <input id="dummy_rate" type="number" value="0.12" min="0" max="1" step="0.01" style="width:100px;margin-left:8px" />
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button id="run_btn">Run benchmark</button>
+      <button id="preview_btn" class="secondary">Generate preview stream</button>
+      <button id="reset_btn" class="secondary">Reset UI</button>
+    </div>
+
+    <hr style="border:none;height:1px;background:rgba(255,255,255,0.03);margin:12px 0" />
+
+    <div class="small">
+      <strong>How to use</strong>
+      <ol>
+        <li>Tune dataset size & tokens for speed ⇢ smaller for live demos.</li>
+        <li>Toggle defenses, set parameters, click <em>Run benchmark</em>.</li>
+        <li>Use <em>Generate preview stream</em> to see a live token animation + packet feed.</li>
+        <li>Read results in the charts & table. Hover interactive charts for details.</li>
+      </ol>
+      <b>Note:</b> This is synthetic and for defensive research / demonstration only.
+    </div>
+
+  </div>
+
+  <!-- RIGHT: content -->
+  <div style="display:flex;flex-direction:column;gap:12px">
+    <div class="panel">
+      <h3 style="margin:0 0 8px 0">Live token stream & packet feed</h3>
+      <canvas id="canvas"></canvas>
+      <div id="feed" style="margin-top:8px"></div>
+    </div>
+
+    <div class="panel" id="results_panel" style="display:none">
+      <h3 style="margin:0 0 8px 0">Benchmark results (live)</h3>
+      <div id="summary" class="small" style="margin-bottom:8px"></div>
+      <div id="plots">
+        <div id="acc_plot" style="min-height:260px;"></div>
+        <div id="cost_plot" style="min-height:260px;"></div>
+      </div>
+
+      <h4 style="margin:10px 0 6px">Detailed table</h4>
+      <div style="max-height:260px;overflow:auto">
+        <table id="results_table">
+          <thead><tr><th>train→test</th><th>defense</th><th>param</th><th>acc</th><th>bw↑</th><th>lat↑</th><th>mi</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  <div class="small">Ethics: This demo is synthetic & for defensive research / teaching only. Do not adapt for attacking real services. The entire app runs client-side via Pyodide + JavaScript.</div>
+</footer>
+
+<!-- Load Pyodide script -->
+<script type="module">
+  // Use latest Pyodide v0.24.x CDN
+  import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js";
+
+  const pystatusEl = document.getElementById("pystatus");
+  let pyodide = null;
+
+  async function initPyodide(){
+    try{
+      pystatusEl.textContent = "Loading Pyodide (this may take a few seconds)…";
+      pyodide = await loadPyodide({indexURL:"https://cdn.jsdelivr.net/pyodide/v0.24.1/full/"});
+      pystatusEl.textContent = "Installing numpy...";
+      await pyodide.loadPackage(["numpy"]);
+      // define Python code (functions return JSON strings so JS can parse easily)
+      await pyodide.runPythonAsync(pythonSource);
+      pystatusEl.textContent = "Ready";
+    }catch(err){
+      console.error(err);
+      pystatusEl.textContent = "Pyodide load error — check console";
+    }
+  }
+
+  // The Python code (as a single string). Functions return JSON strings for robust JS interop.
+  const pythonSource = `
+# Pyodide Python core: synthetic generator, defenses, KNN attacker, MI estimator.
+import numpy as np, math, json
+RNG = np.random.default_rng(42)
+
+def generate_conversation(topic_id, n_tokens=80, mode="token"):
+    trace=[]
+    for i in range(n_tokens):
+        if topic_id==0:
+            size = int(max(5, RNG.normal(40,10)))
+            base_delay = 0.018; burst_prob = 0.12
+        elif topic_id==1:
+            size = int(max(8, RNG.normal(120,40)))
+            base_delay = 0.06; burst_prob = 0.45
+        else:
+            size = int(max(5, RNG.normal(70,25)))
+            base_delay = 0.035; burst_prob = 0.25
+        if RNG.random() < 0.03:
+            size = int(size * RNG.uniform(2.0,3.0))
+        if mode=="token":
+            if RNG.random() < burst_prob:
+                iat = float(max(0.003, RNG.exponential(base_delay/4)))
             else:
-                self.params[k] = v
-        # ensure powers are in sync with params
-        self.trusted['power'] = float(self.params.get('trusted_power', self.trusted.get('power', 140.0)))
-        self.rogue['power'] = float(self.params.get('rogue_power', self.rogue.get('power', 220.0)))
-        if reinit:
-            self._init_environment()
+                iat = float(max(0.003, RNG.exponential(base_delay)))
+        else:
+            if RNG.random() < 0.2:
+                iat = float(max(0.01, RNG.exponential(base_delay*4)))
+            else:
+                iat = float(max(0.003, RNG.exponential(base_delay)))
+        trace.append((int(size), float(iat)))
+    return trace
 
-    def _dist(self,a,b): return math.hypot(a['x']-b['x'], a['y']-b['y'])
-    def _pathloss(self,ap,client): d=max(1.0,self._dist(ap,client)); return ap['power']/(1+(d**1.8)/4000.0)
-    def _rssi(self,ap,client):
-        base=self._pathloss(ap,client)
-        ch_pen=max(0,(self.params['channel_overlap']-abs(ap['channel']-self.trusted['channel'])))*2.0
-        noise=random.uniform(-3,3)+(self.params['noise_floor']*0.1)
-        jam_penalty=self.params['jamming']*1.2
-        return base-ch_pen-jam_penalty+noise
+def fixed_padding(trace, pad_to=100):
+    return [(max(sz,pad_to), dt) for sz,dt in trace]
 
-    def _decision_score(self,ap,client):
-        rssi=self._rssi(ap,client)
-        enc_bonus=6.0 if client['encryption']=='WPA3' else (3.0 if client['encryption']=='WPA2' else 0.0)
-        trust_factor=client['trust']*(1.0 if ap is self.trusted else (1-self.params['vigilance']))
-        return rssi+enc_bonus+trust_factor
+def randomized_batching(trace, mean_batch=4):
+    out=[]; i=0; n=len(trace)
+    while i<n:
+        blen = max(1, int(RNG.poisson(mean_batch)))
+        s_sum=0
+        dt = trace[i][1]
+        for j in range(blen):
+            if i+j>=n: break
+            s_sum += trace[i+j][0]
+        out.append((int(s_sum), float(dt)))
+        i += blen
+    return out
 
-    def _decide_connection(self,client,initial=False):
-        st=self._decision_score(self.trusted,client)
-        sr=self._decision_score(self.rogue,client)-(12.0*(1-client['trust']))
-        since=self.tick-client['last_switch']
-        threshold=5-min(3,since/5.0)
-        if initial and client['connected'] is None:
-            client['connected']='trusted' if st>=sr else 'rogue'; client['last_switch']=self.tick; return
-        if sr-st>threshold:
-            if client['connected']!='rogue': client['connected']='rogue'; client['last_switch']=self.tick; self.alerts+=1
-        elif st-sr>threshold:
-            if client['connected']!='trusted': client['connected']='trusted'; client['last_switch']=self.tick
+def dummy_insertion(trace, dummy_rate=0.12):
+    out=[]
+    for sz,dt in trace:
+        out.append((sz,dt))
+        if RNG.random() < dummy_rate:
+            out.append((int(max(5, RNG.normal(12,3))), float(max(0.003, dt*RNG.uniform(0.08,0.4)))))
+    return out
 
-    def step(self):
-        self.tick+=1
-        rb=self.params.get('rogue_behavior','pulsed')
-        if rb=='pulsed':
-            if random.random()<0.25: self.rogue['power']+=random.uniform(8,28)
-            else: self.rogue['power']+=random.uniform(-2,4)
-        elif rb=='adaptive':
-            weak=[(c['x'],c['y']) for c in self.clients if c['connected']=='trusted' and c['trust']<0.6]
-            if weak:
-                cx=sum(p[0] for p in weak)/len(weak); cy=sum(p[1] for p in weak)/len(weak)
-                self.rogue['x']+=(cx-self.rogue['x'])*0.06; self.rogue['y']+=(cy-self.rogue['y'])*0.06
-                self.rogue['power']+=random.uniform(-1,5)
-            else: self.rogue['power']+=random.uniform(-1,1)
-        elif rb=='stealth': self.rogue['power']+=random.uniform(0,3)
-        else: self.rogue['power']+=random.uniform(-1,1)
-        self.rogue['power']=max(20.0,min(1200.0,self.rogue['power']))
-        for c in self.clients:
-            if self.params['mobility']>0:
-                c['vx']+=random.uniform(-0.12,0.12)*(self.params['mobility']/4.0)
-                c['vy']+=random.uniform(-0.08,0.08)*(self.params['mobility']/4.0)
-                speed=math.hypot(c['vx'],c['vy'])
-                if speed>3.5: c['vx']*=3.5/speed; c['vy']*=3.5/speed
-                c['x']+=c['vx']; c['y']+=c['vy']
-                c['x']=max(40,min(self.width-40,c['x'])); c['y']=max(160,min(self.height-40,c['y']))
-            if random.random()<0.02: c['last_switch']=max(0,c['last_switch']-1)
-            self._decide_connection(c)
+def apply_defense(trace, use_padding=False, pad_to=100, use_batch=False, batch_mean=4, use_dummy=False, dummy_rate=0.12):
+    t = trace
+    if use_batch:
+        t = randomized_batching(t, mean_batch=batch_mean)
+    if use_padding:
+        t = fixed_padding(t, pad_to=pad_to)
+    if use_dummy:
+        t = dummy_insertion(t, dummy_rate=dummy_rate)
+    return t
 
-    def get_state(self):
-        return {'tick':self.tick,'alerts':self.alerts,
-                'trusted':dict(self.trusted),'rogue':dict(self.rogue),
-                'clients':[dict(c) for c in self.clients],'params':dict(self.params)}
+def featurize(trace):
+    sizes = np.array([s for s,_ in trace], dtype=float)
+    iats = np.array([t for _,t in trace], dtype=float)
+    if sizes.size==0:
+        return [0]*11
+    hist_bins = [0,30,60,100,200,1000]
+    hist,_ = np.histogram(sizes, bins=hist_bins)
+    feat = [
+        float(len(sizes)),
+        float(sizes.mean()), float(np.median(sizes)), float(sizes.std()), float(sizes.max()),
+        float(iats.mean()), float(np.median(iats)), float(iats.std()),
+        float((iats < (iats.mean()+1e-9)*0.5).mean()),
+        float(hist[1]), float(hist[2])
+    ]
+    return feat
+
+# KNN (numpy)
+def knn_train_predict(X_train, y_train, X_test, k=5):
+    Xtr = np.array(X_train, dtype=float)
+    Xte = np.array(X_test, dtype=float)
+    ytr = np.array(y_train, dtype=int)
+    preds=[]
+    for xt in Xte:
+        dists = np.sqrt(np.sum((Xtr - xt)**2, axis=1))
+        idx = np.argpartition(dists, k)[:k]
+        vals,counts = np.unique(ytr[idx], return_counts=True)
+        pred = vals[np.argmax(counts)]
+        preds.append(int(pred))
+    return preds
+
+def mutual_info_estimate(X, y, n_bins=8):
+    X = np.array(X, dtype=float)
+    y = np.array(y, dtype=int)
+    mis=[]
+    for i in range(X.shape[1]):
+        xi = X[:,i]
+        if np.all(xi==xi[0]):
+            mis.append(0.0); continue
+        bins = np.linspace(xi.min(), xi.max()+1e-9, n_bins+1)
+        xq = np.digitize(xi, bins) - 1
+        joint={}
+        px={}; py={}
+        n=len(y)
+        for a,b in zip(xq,y):
+            joint[(int(a),int(b))] = joint.get((int(a),int(b)),0)+1
+            px[int(a)] = px.get(int(a),0)+1
+            py[int(b)] = py.get(int(b),0)+1
+        mi=0.0
+        for (a,b),cnt in joint.items():
+            pxy = cnt / n
+            px_ = px[a] / n
+            py_ = py[b] / n
+            mi += pxy * math.log((pxy+1e-12)/(px_*py_+1e-12) + 1e-12)
+        mis.append(mi)
+    return float(np.mean(mis)) if len(mis)>0 else 0.0
+
+# build dataset
+def build_dataset(n_per_topic=250, n_tokens=80, mode="token"):
+    traces=[]; feats=[]; labels=[]
+    for topic in range(3):
+        for _ in range(n_per_topic):
+            tr = generate_conversation(topic, n_tokens=n_tokens, mode=mode)
+            traces.append(tr)
+            feats.append(featurize(tr))
+            labels.append(int(topic))
+    return traces, feats, labels
+
+# run benchmark: single-seed run (fast)
+def run_benchmark_json(n_per_topic=250, n_tokens=80, modes=["token","chunk"], defenses=None):
+    if defenses is None:
+        defenses = [
+            {"name":"none"},
+            {"name":"padding","pad_to":100},
+            {"name":"batching","batch_mean":4},
+            {"name":"dummy","dummy_rate":0.12},
+            {"name":"combined","pad_to":100,"batch_mean":4,"dummy_rate":0.12}
+        ]
+    results=[]
+    datasets={}
+    for mode in modes:
+        traces, feats, labels = build_dataset(n_per_topic=n_per_topic, n_tokens=n_tokens, mode=mode)
+        datasets[mode] = {"traces":traces,"feats":feats,"labels":labels}
+
+    for train_mode in modes:
+        for test_mode in modes:
+            data_train = datasets[train_mode]
+            n = len(data_train["feats"]); half = n//2
+            X_train = data_train["feats"][:half]; y_train = data_train["labels"][:half]
+            X_hold = data_train["feats"][half:]; y_hold = data_train["labels"][half:]
+            preds_hold = knn_train_predict(X_train, y_train, X_hold, k=5)
+            baseline_acc = float(sum(np.array(preds_hold)==np.array(y_hold))/len(y_hold))
+            data_test = datasets[test_mode]
+            traces_test = data_test["traces"]; labels_test = data_test["labels"]
+            for d in defenses:
+                defended_traces=[]
+                for tr in traces_test:
+                    if d["name"]=="none": dtr=tr
+                    elif d["name"]=="padding": dtr=fixed_padding(tr, pad_to=d.get("pad_to",100))
+                    elif d["name"]=="batching": dtr=randomized_batching(tr, mean_batch=d.get("batch_mean",4))
+                    elif d["name"]=="dummy": dtr=dummy_insertion(tr, dummy_rate=d.get("dummy_rate",0.12))
+                    elif d["name"]=="combined": dtr=apply_defense(tr, use_padding=True, pad_to=d.get("pad_to",100), use_batch=True, batch_mean=d.get("batch_mean",4), use_dummy=True, dummy_rate=d.get("dummy_rate",0.12))
+                    else: dtr=tr
+                    defended_traces.append(dtr)
+                X_def = [featurize(t) for t in defended_traces]
+                m = len(X_def)
+                if m<3: continue
+                # choose middle third as evaluation slice
+                s = m//3; e = s + m//3
+                X_def_test = X_def[s:e]; y_def_test = labels_test[s:e]
+                preds_def = knn_train_predict(X_train, y_train, X_def_test, k=5)
+                acc_def = float(sum(np.array(preds_def)==np.array(y_def_test))/len(y_def_test))
+                # cost proxies
+                sample_idx = list(range(0, min(80, len(traces_test))))
+                bw_orig=[]; bw_def=[]; lat_orig=[]; lat_def=[]
+                for i in sample_idx:
+                    tr1 = traces_test[i]; tr2 = defended_traces[i]
+                    orig_bytes = sum([s for s,_ in tr1]); def_bytes = sum([s for s,_ in tr2])
+                    bw_orig.append(orig_bytes); bw_def.append(def_bytes)
+                    lat_orig.append(sum([t for _,t in tr1])); lat_def.append(sum([t for _,t in tr2]))
+                mean_bw_frac = (float(np.mean(bw_def))-float(np.mean(bw_orig)))/(float(np.mean(bw_orig))+1e-9)
+                mean_lat_frac = (float(np.mean(lat_def))-float(np.mean(lat_orig)))/(float(np.mean(lat_orig))+1e-9)
+                mi = mutual_info_estimate(X_def, labels_test, n_bins=8)
+                results.append({
+                    "train_mode":train_mode,
+                    "test_mode":test_mode,
+                    "defense":d["name"],
+                    "param": json.dumps({k:v for k,v in d.items() if k!='name'}),
+                    "baseline_acc": baseline_acc,
+                    "acc": acc_def,
+                    "bw_frac": mean_bw_frac,
+                    "lat_frac": mean_lat_frac,
+                    "mi": mi
+                })
+    return json.dumps(results)
+
+# preview stream generator returns event list JSON
+def generate_preview_stream_json(n_conversations=6, tokens_each=60, mode="token", defenses=None):
+    convs=[]
+    for i in range(n_conversations):
+        topic = int(RNG.integers(0,3))
+        tr = generate_conversation(topic, tokens_each, mode=mode)
+        if defenses:
+            tr = apply_defense(tr, **defenses)
+        convs.append({"topic":topic,"trace":tr,"id":f"conv{i}"})
+    events=[]
+    for c in convs:
+        t_acc=0.0
+        for idx,(sz,iat) in enumerate(c["trace"]):
+            t_acc += iat
+            events.append({"t":t_acc,"conv":c["id"],"topic":c["topic"],"size":int(sz),"iat":float(iat),"token_idx":idx})
+    events_sorted = sorted(events, key=lambda x: x["t"])
+    if len(events_sorted)==0:
+        return json.dumps([])
+    start = events_sorted[0]["t"]
+    for e in events_sorted:
+        e["t_ms"] = int((e["t"]-start)*1000)
+    return json.dumps(events_sorted)
 `;
 
-/* --------------------
-   JS: rendering + UI
-   -------------------- */
-const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
-const overlay = document.getElementById('overlay');
-const statTrusted = document.getElementById('statTrusted'), statRogue = document.getElementById('statRogue'), statTick = document.getElementById('statTick');
-const statusEl = document.getElementById('status');
+  // initialize
+  initPyodide();
 
-// input shortcuts
-const numClients = document.getElementById('numClients');
-const mobility = document.getElementById('mobility');
-const jamming = document.getElementById('jamming');
-const noiseFloor = document.getElementById('noiseFloor');
-const channelOverlap = document.getElementById('channelOverlap');
-const encRate = document.getElementById('encRate');
-const vigilance = document.getElementById('vigilance');
-const trustedPower = document.getElementById('trustedPower');
-const roguePower = document.getElementById('roguePower');
-const preset = document.getElementById('preset');
-const rogueBehavior = document.getElementById('rogueBehavior');
+  // UI elements
+  const nPerEl = document.getElementById("n_per_topic");
+  const nPerLabel = document.getElementById("n_per_topic_label");
+  nPerEl.addEventListener("input", ()=>nPerLabel.textContent = nPerEl.value);
 
-let pyodide=null, sim=null, animId=null, auto=false;
+  const nTokensEl = document.getElementById("n_tokens");
+  const nTokensLabel = document.getElementById("n_tokens_label");
+  nTokensEl.addEventListener("input", ()=>nTokensLabel.textContent = nTokensEl.value);
 
-async function init(){
-  try{
-    statusEl.innerText = 'Loading Pyodide...';
-    pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.29.0/full/'});
-    pyodide.runPython(PY_CODE);
-    pyodide.runPython('sim = RogueAPSimulation()');
-    sim = pyodide.globals.get('sim');
-    statusEl.innerText = 'Ready';
-    resize();
-    requestAnimationFrame(renderLoop);
-  }catch(e){
-    console.error('Pyodide init error', e);
-    statusEl.innerText = 'Error';
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
+  function resizeCanvas(){
+    canvas.width = canvas.clientWidth * devicePixelRatio;
+    canvas.height = canvas.clientHeight * devicePixelRatio;
+    ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    drawBackground();
   }
-}
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas();
 
-function collectParams(){
-  return {
-    n_clients: parseInt(numClients.value),
-    mobility: parseFloat(mobility.value),
-    jamming: parseFloat(jamming.value),
-    noise_floor: parseFloat(noiseFloor.value),
-    channel_overlap: parseFloat(channelOverlap.value),
-    enc_rate: parseFloat(encRate.value)/100.0,
-    vigilance: parseFloat(vigilance.value),
-    trusted_power: parseFloat(trustedPower.value),
-    rogue_power: parseFloat(roguePower.value),
-    preset: preset.value.toLowerCase(),
-    rogue_behavior: rogueBehavior.value
-  };
-}
-
-async function applyParams(){
-  const params = collectParams();
-  const kw = Object.entries(params).map(([k,v])=>`${k}=${JSON.stringify(v)}`).join(',');
-  try{
-    await pyodide.runPythonAsync(`sim.set_params(${kw})`);
-  }catch(e){
-    console.error('applyParams failed', e);
+  function drawBackground(){
+    ctx.fillStyle="#06111a"; ctx.fillRect(0,0,canvas.width,canvas.height);
+    // top band
+    ctx.fillStyle="#07182b"; ctx.fillRect(0,0,canvas.width,40);
+    ctx.fillStyle="#9fb1c8";
+    ctx.font = "14px sans-serif";
+    ctx.fillText("Token stream (animated)", 12, 26);
   }
-}
+  drawBackground();
 
-function resize(){ const r=canvas.getBoundingClientRect(); canvas.width = Math.floor(r.width); canvas.height = Math.floor(r.height); }
-window.addEventListener('resize', resize);
+  let streamEvents = []; // will hold events sorted by t_ms
+  let streamStart = null;
+  let playIdx = 0;
+  let animReq = null;
+  const feed = document.getElementById("feed");
 
-function drawGrid(){
-  const w=canvas.width,h=canvas.height; ctx.clearRect(0,0,w,h);
-  ctx.globalAlpha=0.06; ctx.strokeStyle='rgba(255,255,255,0.03)';
-  for(let x=0;x<w;x+=48){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
-  for(let y=0;y<h;y+=48){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
-  ctx.globalAlpha=1.0;
-}
-
-let sweep = 0;
-function drawRadar(cx,cy,r){
-  const a = sweep; const span = 0.8; const grad = ctx.createRadialGradient(cx,cy,0,cx,cy,r);
-  grad.addColorStop(0, 'rgba(0,198,255,0.14)'); grad.addColorStop(1,'rgba(0,198,255,0)');
-  ctx.fillStyle = grad; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,a,a+span); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle='rgba(0,198,255,0.5)'; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*r, cy+Math.sin(a)*r); ctx.stroke();
-  sweep += 0.02;
-}
-
-function color(name, a){
-  const m={'accent':[0,198,255],'good':[0,211,138],'bad':[255,107,107]};
-  const c=m[name]||[200,200,200];
-  return `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-}
-
-function drawAP(ap, label){
-  const sx=canvas.width/1200, sy=canvas.height/760; const x=ap.x*sx, y=ap.y*sy;
-  const radius = Math.min(900, ap.power*1.2)*(canvas.width/1200);
-  const g=ctx.createRadialGradient(x,y,0,x,y,radius);
-  g.addColorStop(0, color('accent',0.35)); g.addColorStop(0.6, color('accent',0.08)); g.addColorStop(1, 'rgba(2,8,16,0)');
-  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,radius,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fillStyle=color('good',1); ctx.fill();
-  ctx.fillStyle='#e6fbff'; ctx.font='12px Arial'; ctx.fillText(label + ` s=${Math.round(ap.power)}`, x+12, y+4);
-}
-
-function calcSignal(ap, client){ const d = Math.hypot(ap.x-client.x, ap.y-client.y)+1; return ap.power / (1 + (d**1.8)/4000.0); }
-
-function drawMini(x,y,st,sr){
-  const maxw=44; const total=Math.max(st,sr,6); const w1=Math.min(maxw,(st/total)*maxw); const w2=Math.min(maxw,(sr/total)*maxw);
-  ctx.fillStyle=color('good',0.9); ctx.fillRect(x,y,w1,4);
-  ctx.fillStyle=color('bad',0.9); ctx.fillRect(x,y+6,w2,4);
-  ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.strokeRect(x,y,maxw,10);
-}
-
-function drawClient(c, state){
-  const sx=canvas.width/1200, sy=canvas.height/760; const x=c.x*sx, y=c.y*sy;
-  ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2); ctx.fillStyle = c.connected==='rogue' ? color('bad',0.95) : color('good',0.95); ctx.fill();
-  ctx.fillStyle='#e6fbff'; ctx.font='11px Arial'; ctx.fillText('C'+c.id, x+10, y+4);
-  const st = calcSignal(state.trusted, c); const sr = calcSignal(state.rogue, c); drawMini(x-16,y-18,st,sr);
-  const ap = c.connected==='rogue' ? state.rogue : state.trusted;
-  if(ap){ ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(ap.x*(canvas.width/1200), ap.y*(canvas.height/760)); ctx.strokeStyle = c.connected==='rogue'? color('bad',0.4) : color('good',0.35); ctx.lineWidth=1.2; ctx.stroke(); }
-}
-
-async function renderLoop(){
-  resize();
-  if(!pyodide) { requestAnimationFrame(renderLoop); return; }
-  try{
-    const st_py = pyodide.runPython('sim.get_state()');
-    const st = st_py.toJs ? st_py.toJs() : st_py;
-    // dynamic env visual cue (background tint) based on jamming
-    const jam = st.params.jamming || st.params.jamming === 0 ? st.params.jamming : 0;
-    document.body.style.background = `linear-gradient(180deg, rgba(${18+jam*9},${28-jam},${40+jam*4},1), #011024)`;
-    drawGrid();
-    drawRadar((st.trusted.x+st.rogue.x)/2*(canvas.width/1200),(st.trusted.y+st.rogue.y)/2*(canvas.height/760), Math.min(canvas.width,canvas.height)/2.4);
-    drawAP(st.trusted,'Trusted');
-    drawAP(st.rogue,'Rogue');
-    st.clients.forEach(c=> drawClient(c,st));
-    statTrusted.innerText = st.clients.filter(c=>c.connected==='trusted').length;
-    statRogue.innerText = st.clients.filter(c=>c.connected==='rogue').length;
-    statTick.innerText = st.tick;
-    overlay.innerText = `Jamming: ${st.params.jamming} • Noise: ${st.params.noise_floor}dB • EncRate: ${Math.round(st.params.enc_rate*100)}%`;
-  }catch(e){ console.error('render error', e); }
-  if(auto){
-    try{ await pyodide.runPythonAsync('sim.step()'); }catch(e){ console.error(e); }
+  function clearFeed(){ feed.innerHTML = ""; }
+  function addFeedLine(txt, cls){
+    const d = document.createElement("div"); d.textContent = txt; d.style.padding = "2px 0";
+    if(cls==="alert") d.style.color = "var(--danger)";
+    feed.appendChild(d); feed.scrollTop = feed.scrollHeight;
   }
-  animId = requestAnimationFrame(renderLoop);
-}
 
-/* UI wiring */
-document.getElementById('startBtn').addEventListener('click', async ()=>{
-  if(!pyodide){ alert('Runtime not ready yet — wait a moment.'); return; }
-  await applyParams();
-  // re-init environment so clients/positions reflect the new params (keeps behavior explicit)
-  try{
-    await pyodide.runPythonAsync('sim._init_environment()');
-    await pyodide.runPythonAsync('sim.step()');
-  }catch(e){ console.error('Error during re-init', e); }
-});
+  function renderFrame(){
+    if(!streamStart) return;
+    const now = performance.now() - streamStart;
+    drawBackground();
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const windowMs = 4000; // 4s view window
+    // draw events within last 4s of now
+    const upto = streamEvents.filter(e => e.t_ms <= now);
+    const recent = upto.slice(Math.max(0, upto.length-250));
+    // vertical lanes by conversation id
+    const convs = Array.from(new Set(streamEvents.map(e=>e.conv))).slice(0,12);
+    const convIndex = {}; convs.forEach((c,i)=>convIndex[c]=i);
+    for(let e of recent){
+      const x = (e.t_ms - Math.max(0, now-windowMs))/windowMs * (w-20) + 10;
+      const lane = convIndex[e.conv] ?? 0;
+      const y = 60 + lane * ((h-80)/12);
+      const r = Math.min(12, Math.max(3, e.size / 60));
+      const colors = ["#00d38a","#00c6ff","#ffb86b"];
+      ctx.beginPath();
+      ctx.fillStyle = colors[e.topic % colors.length];
+      ctx.globalAlpha = 0.95;
+      ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.fill();
+    }
+    // append feed lines for new events
+    while(playIdx < streamEvents.length && streamEvents[playIdx].t_ms <= now){
+      const e = streamEvents[playIdx];
+      addFeedLine(`[${(e.t_ms/1000).toFixed(3)}s] ${e.conv} topic=${e.topic} size=${e.size}B iat=${e.iat.toFixed(3)}s`);
+      playIdx++;
+    }
+    animReq = requestAnimationFrame(renderFrame);
+  }
 
-document.getElementById('stepBtn').addEventListener('click', async ()=>{ if(pyodide) { await pyodide.runPythonAsync('sim.step()'); }});
-document.getElementById('autoBtn').addEventListener('click', ()=>{ auto = !auto; document.getElementById('autoBtn').innerText = auto ? 'Stop' : 'Auto'; });
+  function stopStream(){
+    if(animReq) cancelAnimationFrame(animReq);
+    animReq = null; streamStart = null; playIdx = 0;
+  }
 
-/* start */
-init();
-  </script>
+  // Generate preview stream (call Python generate_preview_stream_json)
+  async function generatePreview(){
+    clearFeed(); stopStream();
+    if(!pyodide) return alert("Pyodide not ready yet");
+    const tokens_each = parseInt(nTokensEl.value) || 60;
+    const mode = (document.getElementById("mode_chunk").checked && !document.getElementById("mode_token").checked) ? "chunk" : "token";
+    const use_padding = document.getElementById("use_padding").checked;
+    const use_batch = document.getElementById("use_batch").checked;
+    const use_dummy = document.getElementById("use_dummy").checked;
+    const pad_to = parseInt(document.getElementById("pad_to").value) || 100;
+    const batch_mean = parseFloat(document.getElementById("batch_mean").value) || 4;
+    const dummy_rate = parseFloat(document.getElementById("dummy_rate").value) || 0.12;
+    const defenses = (use_padding || use_batch || use_dummy) ? {"use_padding":use_padding,"pad_to":pad_to,"use_batch":use_batch,"batch_mean":batch_mean,"use_dummy":use_dummy,"dummy_rate":dummy_rate} : null;
+    const n_convs = 6;
+    const pyCall = `generate_preview_stream_json(${n_convs}, ${tokens_each}, mode="${mode}", defenses=${JSON.stringify(defenses)})`;
+    try{
+      const pyres = await pyodide.runPythonAsync(pyCall);
+      const events = JSON.parse(pyres);
+      streamEvents = events.map(e=>({t_ms:e.t_ms, conv:e.conv, topic:e.topic, size:e.size, iat:e.iat}));
+      if(streamEvents.length==0){ addFeedLine("No events generated.", "alert"); return; }
+      streamStart = performance.now();
+      playIdx = 0;
+      animReq = requestAnimationFrame(renderFrame);
+    }catch(err){
+      console.error(err); alert("Preview generation error; see console.");
+    }
+  }
+
+  // Run full benchmark: call run_benchmark_json and render table + plots
+  async function runBenchmark(){
+    if(!pyodide) return alert("Pyodide not ready yet");
+    document.getElementById("results_panel").style.display = "block";
+    const n_per_topic = parseInt(nPerEl.value) || 250;
+    const n_tokens = parseInt(nTokensEl.value) || 80;
+    const modes = [];
+    if(document.getElementById("mode_token").checked) modes.push("token");
+    if(document.getElementById("mode_chunk").checked) modes.push("chunk");
+    const defenses = [
+      {"name":"none"},
+      {"name":"padding","pad_to":parseInt(document.getElementById("pad_to").value)||100},
+      {"name":"batching","batch_mean":parseFloat(document.getElementById("batch_mean").value)||4},
+      {"name":"dummy","dummy_rate":parseFloat(document.getElementById("dummy_rate").value)||0.12},
+      {"name":"combined","pad_to":parseInt(document.getElementById("pad_to").value)||100,"batch_mean":parseFloat(document.getElementById("batch_mean").value)||4,"dummy_rate":parseFloat(document.getElementById("dummy_rate").value)||0.12}
+    ];
+    document.getElementById("summary").textContent = "Running benchmark in your browser — this may take ~10–40s depending on size...";
+    // call python
+    const pyCall = `run_benchmark_json(n_per_topic=${n_per_topic}, n_tokens=${n_tokens}, modes=${JSON.stringify(modes)}, defenses=${JSON.stringify(defenses)})`;
+    try{
+      const pyres = await pyodide.runPythonAsync(pyCall);
+      const results = JSON.parse(pyres);
+      // populate table
+      const tbody = document.querySelector("#results_table tbody"); tbody.innerHTML = "";
+      for(const r of results){
+        const tr = document.createElement("tr");
+        function td(txt){ const d=document.createElement("td"); d.textContent = txt; return d; }
+        tr.appendChild(td(r.train_mode + "→" + r.test_mode));
+        tr.appendChild(td(r.defense));
+        tr.appendChild(td(r.param));
+        tr.appendChild(td((r.acc).toFixed(3)));
+        tr.appendChild(td((r.bw_frac*100).toFixed(1) + "%"));
+        tr.appendChild(td((r.lat_frac*100).toFixed(1) + "%"));
+        tr.appendChild(td((r.mi).toFixed(4)));
+        tbody.appendChild(tr);
+      }
+      // aggregate mean acc by defense
+      const agg = {};
+      for(const r of results){
+        const k = r.defense;
+        if(!agg[k]) agg[k] = [];
+        agg[k].push(r.acc);
+      }
+      const defensesList = Object.keys(agg);
+      const means = defensesList.map(k => agg[k].reduce((a,b)=>a+b,0)/agg[k].length);
+      // Plotly accuracy bar
+      const accData = [{x:defensesList, y:means, type:'bar', marker:{color:'#00c6ff'}}];
+      const accLayout = {title:"Mean attacker accuracy by defense", yaxis:{range:[0,1]}};
+      Plotly.newPlot('acc_plot', accData, accLayout, {responsive:true});
+
+      // scatter accuracy vs bandwidth
+      const bwAgg = {};
+      for(const r of results){
+        const k=r.defense;
+        if(!bwAgg[k]) bwAgg[k]= {bw:[], acc:[]};
+        bwAgg[k].bw.push(r.bw_frac);
+        bwAgg[k].acc.push(r.acc);
+      }
+      const traces = [];
+      for(const k of Object.keys(bwAgg)){
+        traces.push({x: bwAgg[k].bw.map(x=>x*100), y: bwAgg[k].acc, mode:'markers', name:k});
+      }
+      const costLayout = {title:"Attacker accuracy vs bandwidth overhead (%)", xaxis:{title:"Bandwidth overhead (%)"}, yaxis:{title:"Accuracy", range:[0,1]}};
+      Plotly.newPlot('cost_plot', traces, costLayout, {responsive:true});
+
+      document.getElementById("summary").textContent = `Benchmark complete — ${results.length} rows. Hover charts for details.`;
+    }catch(err){
+      console.error(err); alert("Benchmark error; see console.");
+    }
+  }
+
+  // Reset UI
+  document.getElementById("reset_btn").addEventListener("click", ()=>{
+    document.getElementById("results_panel").style.display = "none";
+    const tbody = document.querySelector("#results_table tbody"); tbody.innerHTML = "";
+    document.getElementById("summary").textContent = "";
+    clearFeed(); stopStream();
+    drawBackground();
+  });
+
+  // Button bindings
+  document.getElementById("preview_btn").addEventListener("click", ()=>{ generatePreview().catch(e=>console.error(e)); });
+  document.getElementById("run_btn").addEventListener("click", ()=>{ runBenchmark().catch(e=>console.error(e)); });
+
+</script>
 </body>
 </html>
